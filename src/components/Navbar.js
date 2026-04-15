@@ -155,13 +155,13 @@ export default function Navbar() {
             {/* Desktop nav + mobile dropdown (shared, toggled via CSS class) */}
             <div className={`nav-right${mobileMenuOpen ? ' nav-open' : ''}`}>
                 <a
-                    href="/about"
+                    href="/faq"
                     className="font-mono"
                     style={{ fontSize: '0.78rem', color: '#64748b', textDecoration: 'none', textTransform: 'uppercase', letterSpacing: '0.06em' }}
                     onMouseEnter={e => e.target.style.color = '#a78bfa'}
                     onMouseLeave={e => e.target.style.color = '#64748b'}
                 >
-                    How it works
+                    FAQ
                 </a>
 
                 <div style={{ position: 'relative' }} ref={popupRef}>

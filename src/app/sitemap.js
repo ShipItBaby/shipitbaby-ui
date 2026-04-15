@@ -15,7 +15,7 @@ export default function sitemap() {
       priority: 1,
     },
     {
-      url: `${BASE_URL}/about`,
+      url: `${BASE_URL}/faq`,
       lastModified: new Date(),
       changeFrequency: 'monthly',
       priority: 0.7,
