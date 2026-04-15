@@ -15,7 +15,8 @@ export async function GET(request) {
     }
 
     // Using state to pass the wallet address securely through the OAuth loop
-    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/github/callback`;
+    const origin = new URL(request.url).origin;
+    const redirectUri = `${origin}/api/github/callback`;
     const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=read:user,repo&state=${wallet}`;
 
     return NextResponse.redirect(githubAuthUrl);
