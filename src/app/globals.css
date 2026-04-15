@@ -12,6 +12,7 @@
   --text: #e2e8f0;
   --muted: #64748b;
   --pixel: 2px;
+  --section-px: 32px;
 }
 
 * {
@@ -298,18 +299,98 @@ body {
   background: var(--accent);
 }
 
-/* ── Responsive ─────────────────────────────────────────────────────────── */
+/* ── Responsive layout helpers ───────────────────────────────────────────── */
 .hero-grid {
   grid-template-columns: 1fr 1fr;
 }
 
+.steps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.community-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 60px;
+  align-items: center;
+}
+
+/* Footer inner row */
+.footer-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Stages row connector lines are visible by default */
 .stages-row > div:not(:last-child) > div[style*="position: absolute"] {
   display: block;
 }
 
-@media (max-width: 680px) {
+/* ── Navbar mobile ───────────────────────────────────────────────────────── */
+.nav-right {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+}
+
+.nav-hamburger {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.nav-hamburger span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: #64748b;
+  transition: background 0.15s;
+}
+
+.nav-hamburger:hover span {
+  background: #a78bfa;
+}
+
+/* ── Mobile breakpoint ───────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  :root {
+    --section-px: 16px;
+  }
+
   .hero-grid {
     grid-template-columns: 1fr;
+  }
+
+  .steps-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .features-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .community-grid {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .footer-inner {
+    flex-direction: column;
+    text-align: center;
   }
 
   .stages-row {
@@ -321,5 +402,30 @@ body {
   /* Hide the connector lines on mobile */
   .stages-row > div > div[style*="position: absolute"][style*="height: 2px"] {
     display: none;
+  }
+
+  /* Navbar: hide desktop links, show hamburger */
+  .nav-right {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px 20px;
+    background: rgba(10, 10, 15, 0.98);
+    border-bottom: 1px solid #1e1e30;
+    backdrop-filter: blur(10px);
+    gap: 16px;
+    z-index: 99;
+  }
+
+  .nav-right.nav-open {
+    display: flex;
+  }
+
+  .nav-hamburger {
+    display: flex;
   }
 }

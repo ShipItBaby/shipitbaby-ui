@@ -29,6 +29,7 @@ export default function Navbar() {
     const [walletAddress, setWalletAddress] = useState(null);
     const [showPopup, setShowPopup] = useState(false);
     const [connecting, setConnecting] = useState(false);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const popupRef = useRef(null);
 
     // Silently restore session if user already approved this site
@@ -151,7 +152,8 @@ export default function Navbar() {
                 </div>
             </Link>
 
-            <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+            {/* Desktop nav + mobile dropdown (shared, toggled via CSS class) */}
+            <div className={`nav-right${mobileMenuOpen ? ' nav-open' : ''}`}>
                 <a
                     href="/about"
                     className="font-mono"
@@ -237,6 +239,18 @@ export default function Navbar() {
                     )}
                 </div>
             </div>
+
+            {/* Hamburger button — visible only on mobile via CSS */}
+            <button
+                className="nav-hamburger"
+                onClick={() => setMobileMenuOpen(prev => !prev)}
+                aria-label="Toggle menu"
+                aria-expanded={mobileMenuOpen}
+            >
+                <span />
+                <span />
+                <span />
+            </button>
         </nav>
     );
 }

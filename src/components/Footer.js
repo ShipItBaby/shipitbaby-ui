@@ -10,16 +10,10 @@ import { XIcon, GithubIcon } from '@/components/icons';
  */
 export default function Footer({ maxWidth = '1100px' }) {
   return (
-    <footer style={{ borderTop: '1px solid #1e1e30', padding: '24px 32px', background: '#0a0a0f' }}>
+    <footer style={{ borderTop: '1px solid #1e1e30', padding: '24px var(--section-px)', background: '#0a0a0f' }}>
       <div
-        style={{
-          maxWidth,
-          margin: '0 auto',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 16,
-        }}
+        className="footer-inner"
+        style={{ maxWidth, margin: '0 auto' }}
       >
         {/* Brand */}
         <span className="font-pixel" style={{ fontSize: '1.1rem', color: '#475569' }}>

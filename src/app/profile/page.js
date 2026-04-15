@@ -20,6 +20,7 @@ export default function Profile() {
     const [walletType, setWalletType] = useState(null);
     const [githubUsername, setGithubUsername] = useState(null);
     const [isUpdating, setIsUpdating] = useState(false);
+    const [isUnlinking, setIsUnlinking] = useState(false);
 
     useEffect(() => {
         async function fetchWallet() {
@@ -89,6 +90,27 @@ export default function Profile() {
             setWalletType(null);
             setGithubUsername(null);
             router.push('/');
+        }
+    }
+
+    async function handleUnlinkGithub() {
+        if (!walletAddress) return;
+        setIsUnlinking(true);
+        try {
+            const res = await fetch('/api/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ wallet: walletAddress, github_username: null }),
+            });
+            if (res.ok) {
+                setGithubUsername(null);
+            } else {
+                console.error('Failed to unlink GitHub');
+            }
+        } catch (err) {
+            console.error('Failed to unlink GitHub', err);
+        } finally {
+            setIsUnlinking(false);
         }
     }
 
@@ -185,7 +207,7 @@ export default function Profile() {
                                     </div>
                                 </div>
                             </div>
-                            {!githubUsername && (
+                            {!githubUsername ? (
                                 <button
                                     onClick={handleConnectGithub}
                                     disabled={isUpdating}
@@ -201,6 +223,22 @@ export default function Profile() {
                                     onMouseLeave={e => { if (!isUpdating) e.currentTarget.style.background = '#7c3aed'; }}
                                 >
                                     {isUpdating ? 'Linking...' : 'Link GitHub'}
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={handleUnlinkGithub}
+                                    disabled={isUnlinking}
+                                    className="font-mono"
+                                    style={{
+                                        padding: '10px 20px', fontSize: '0.8rem', cursor: isUnlinking ? 'not-allowed' : 'pointer',
+                                        background: 'transparent', color: '#ef4444', border: '1px solid #ef4444',
+                                        textTransform: 'uppercase', letterSpacing: '0.05em',
+                                        opacity: isUnlinking ? 0.7 : 1, transition: 'all 0.2s',
+                                    }}
+                                    onMouseEnter={e => { if (!isUnlinking) e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
+                                    onMouseLeave={e => { if (!isUnlinking) e.currentTarget.style.background = 'transparent'; }}
+                                >
+                                    {isUnlinking ? 'Unlinking...' : 'Unlink'}
                                 </button>
                             )}
                         </div>

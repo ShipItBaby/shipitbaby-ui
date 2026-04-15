@@ -40,7 +40,7 @@ export default function Home() {
 
             {/* ── HERO ── */}
             <section className="hero-grid" style={{
-                maxWidth: 1100, margin: '0 auto', padding: '80px 32px 60px',
+                maxWidth: 1100, margin: '0 auto', padding: '80px var(--section-px) 60px',
                 display: 'grid', gap: 40, alignItems: 'center',
             }}>
                 {/* Left: Text */}
@@ -109,7 +109,7 @@ export default function Home() {
             <div className="pixel-sep" style={{ maxWidth: 1100, margin: '0 auto 60px', width: '90%' }} />
 
             {/* ── HOW IT WORKS ── */}
-            <section style={{ maxWidth: 1100, margin: '0 auto', padding: '0 32px 80px' }}>
+            <section style={{ maxWidth: 1100, margin: '0 auto', padding: '0 var(--section-px) 80px' }}>
                 <div style={{ textAlign: 'center', marginBottom: 48 }}>
                     <span className="font-mono" style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             // HOW IT WORKS
@@ -118,7 +118,7 @@ export default function Home() {
                         Simple loop. Real stakes.
                     </h2>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
+                <div className="steps-grid">
                     {STEPS.map((step, i) => (
                         <div key={step.num} className="card" style={{ textAlign: 'center', padding: 32 }}>
                             <div className="font-mono" style={{ fontSize: '0.65rem', color: '#475569', marginBottom: 12, letterSpacing: '0.1em' }}>
@@ -135,7 +135,7 @@ export default function Home() {
             </section>
 
             {/* ── MATURITY STAGES ── */}
-            <section style={{ background: '#0f0f1a', borderTop: '1px solid #1e1e30', borderBottom: '1px solid #1e1e30', padding: '60px 32px' }}>
+            <section style={{ background: '#0f0f1a', borderTop: '1px solid #1e1e30', borderBottom: '1px solid #1e1e30', padding: '60px var(--section-px)' }}>
                 <div style={{ maxWidth: 1100, margin: '0 auto' }}>
                     <div style={{ textAlign: 'center', marginBottom: 40 }}>
                         <span className="font-mono" style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
@@ -145,7 +145,7 @@ export default function Home() {
                             Ship to unlock stages
                         </h2>
                     </div>
-                    <div style={{ display: 'flex', gap: 0, position: 'relative' }}>
+                    <div className="stages-row" style={{ display: 'flex', gap: 0, position: 'relative' }}>
                         {[
                             { num: 1, label: 'Idea', color: '#475569', active: false },
                             { num: 2, label: 'Proof', color: '#7c3aed', active: true },
@@ -192,7 +192,7 @@ export default function Home() {
             </section>
 
             {/* ── FEATURES ── */}
-            <section style={{ maxWidth: 1100, margin: '0 auto', padding: '80px 32px' }}>
+            <section style={{ maxWidth: 1100, margin: '0 auto', padding: '80px var(--section-px)' }}>
                 <div style={{ textAlign: 'center', marginBottom: 48 }}>
                     <span className="font-mono" style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             // WHAT MAKES IT DIFFERENT
@@ -201,7 +201,7 @@ export default function Home() {
                         Execution is the meta
                     </h2>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                <div className="features-grid">
                     {FEATURES.map((f) => (
                         <div key={f.title} className="card" style={{ padding: '24px 20px' }}>
                             <span className="font-pixel" style={{ fontSize: '1.6rem', color: '#7c3aed', display: 'block', marginBottom: 10 }}>
@@ -217,8 +217,8 @@ export default function Home() {
             </section>
 
             {/* ── COMMUNITY SIGNALS ── */}
-            <section style={{ background: '#0f0f1a', borderTop: '1px solid #1e1e30', borderBottom: '1px solid #1e1e30', padding: '60px 32px' }}>
-                <div style={{ maxWidth: 1100, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 60, alignItems: 'center' }}>
+            <section style={{ background: '#0f0f1a', borderTop: '1px solid #1e1e30', borderBottom: '1px solid #1e1e30', padding: '60px var(--section-px)' }}>
+                <div className="community-grid" style={{ maxWidth: 1100, margin: '0 auto' }}>
                     <div>
                         <span className="font-mono" style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
               // COMMUNITY SIGNALS
@@ -268,7 +268,7 @@ export default function Home() {
             </section>
 
             {/* ── CTA ── */}
-            <section style={{ maxWidth: 1100, margin: '0 auto', padding: '100px 32px', textAlign: 'center' }}>
+            <section style={{ maxWidth: 1100, margin: '0 auto', padding: '100px var(--section-px)', textAlign: 'center' }}>
                 <span className="font-mono" style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', marginBottom: 16 }}>
           // LAUNCH YOUR APP AS A MARKET
                 </span>
