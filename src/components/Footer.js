@@ -24,7 +24,7 @@ export default function Footer({ maxWidth = '1100px' }) {
         <span
           className="font-mono"
           style={{
-            fontSize: '0.65rem',
+            fontSize: '0.82rem',
             color: '#2d2d40',
             textTransform: 'uppercase',
             letterSpacing: '0.08em',
@@ -69,7 +69,7 @@ export default function Footer({ maxWidth = '1100px' }) {
             <GithubIcon size={20} />
           </a>
 
-          <span className="font-mono" style={{ fontSize: '0.65rem', color: '#2d2d40' }}>
+          <span className="font-mono" style={{ fontSize: '0.82rem', color: '#2d2d40' }}>
             © 2026
           </span>
         </div>

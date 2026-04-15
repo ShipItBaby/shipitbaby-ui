@@ -62,11 +62,11 @@ export default function Home() {
                         <span className="blink" style={{ color: '#7c3aed' }}>_</span>
                     </h1>
 
-                    <p style={{ fontSize: '1rem', color: '#64748b', lineHeight: 1.7, marginBottom: 16, maxWidth: 440 }}>
+                    <p style={{ fontSize: '1.1rem', color: '#64748b', lineHeight: 1.7, marginBottom: 16, maxWidth: 440 }}>
                         Builders launch apps as <span style={{ color: '#a78bfa' }}>tradable Solana tokens</span> and ship in public.
                         Users speculate on <span style={{ color: '#06d6a0' }}>execution</span> — commits, demos, milestones, speed.
                     </p>
-                    <p className="font-mono" style={{ fontSize: '0.78rem', color: '#475569', marginBottom: 36 }}>
+                    <p className="font-mono" style={{ fontSize: '0.95rem', color: '#475569', marginBottom: 36 }}>
                         Not memes. Not equity. Market attention around building.
                     </p>
 
@@ -111,7 +111,7 @@ export default function Home() {
             {/* ── HOW IT WORKS ── */}
             <section style={{ maxWidth: 1100, margin: '0 auto', padding: '0 var(--section-px) 80px' }}>
                 <div style={{ textAlign: 'center', marginBottom: 48 }}>
-                    <span className="font-mono" style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                    <span className="font-mono" style={{ color: '#475569', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             // HOW IT WORKS
                     </span>
                     <h2 className="font-pixel" style={{ fontSize: '2rem', color: '#e2e8f0', marginTop: 8 }}>
@@ -121,14 +121,14 @@ export default function Home() {
                 <div className="steps-grid">
                     {STEPS.map((step, i) => (
                         <div key={step.num} className="card" style={{ textAlign: 'center', padding: 32 }}>
-                            <div className="font-mono" style={{ fontSize: '0.65rem', color: '#475569', marginBottom: 12, letterSpacing: '0.1em' }}>
+                            <div className="font-mono" style={{ fontSize: '0.9rem', color: '#475569', marginBottom: 12, letterSpacing: '0.1em' }}>
                                 {step.num}
                             </div>
                             <div style={{ fontSize: '2rem', marginBottom: 12 }}>{step.icon}</div>
-                            <h3 className="font-pixel" style={{ fontSize: '1.1rem', color: '#a78bfa', marginBottom: 8 }}>
+                            <h3 className="font-pixel" style={{ fontSize: '1.2rem', color: '#a78bfa', marginBottom: 8 }}>
                                 {step.label}
                             </h3>
-                            <p style={{ fontSize: '0.8rem', color: '#64748b', lineHeight: 1.6 }}>{step.desc}</p>
+                            <p style={{ fontSize: '1rem', color: '#64748b', lineHeight: 1.6 }}>{step.desc}</p>
                         </div>
                     ))}
                 </div>
@@ -138,7 +138,7 @@ export default function Home() {
             <section style={{ background: '#0f0f1a', borderTop: '1px solid #1e1e30', borderBottom: '1px solid #1e1e30', padding: '60px var(--section-px)' }}>
                 <div style={{ maxWidth: 1100, margin: '0 auto' }}>
                     <div style={{ textAlign: 'center', marginBottom: 40 }}>
-                        <span className="font-mono" style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                        <span className="font-mono" style={{ color: '#475569', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
               // PROJECT MATURITY
                         </span>
                         <h2 className="font-pixel" style={{ fontSize: '1.8rem', color: '#e2e8f0', marginTop: 8 }}>
@@ -173,7 +173,7 @@ export default function Home() {
                                         </span>
                                     </div>
                                     <span className="font-mono" style={{
-                                        marginTop: 10, fontSize: '0.68rem', textTransform: 'uppercase',
+                                        marginTop: 10, fontSize: '0.88rem', textTransform: 'uppercase',
                                         color: stage.active ? stage.color : '#475569', letterSpacing: '0.08em',
                                     }}>
                                         {stage.label}
@@ -183,7 +183,7 @@ export default function Home() {
                         ))}
                     </div>
                     <p className="font-mono" style={{
-                        textAlign: 'center', marginTop: 32, fontSize: '0.72rem',
+                        textAlign: 'center', marginTop: 32, fontSize: '0.9rem',
                         color: '#475569', letterSpacing: '0.05em',
                     }}>
                         Projects mature through execution — not just market cap
@@ -194,7 +194,7 @@ export default function Home() {
             {/* ── FEATURES ── */}
             <section style={{ maxWidth: 1100, margin: '0 auto', padding: '80px var(--section-px)' }}>
                 <div style={{ textAlign: 'center', marginBottom: 48 }}>
-                    <span className="font-mono" style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                    <span className="font-mono" style={{ color: '#475569', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
             // WHAT MAKES IT DIFFERENT
                     </span>
                     <h2 className="font-pixel" style={{ fontSize: '1.8rem', color: '#e2e8f0', marginTop: 8 }}>
@@ -207,10 +207,10 @@ export default function Home() {
                             <span className="font-pixel" style={{ fontSize: '1.6rem', color: '#7c3aed', display: 'block', marginBottom: 10 }}>
                                 {f.icon}
                             </span>
-                            <h3 className="font-pixel" style={{ fontSize: '0.95rem', color: '#e2e8f0', marginBottom: 6 }}>
+                            <h3 className="font-pixel" style={{ fontSize: '1.1rem', color: '#e2e8f0', marginBottom: 6 }}>
                                 {f.title}
                             </h3>
-                            <p style={{ fontSize: '0.78rem', color: '#64748b', lineHeight: 1.6 }}>{f.desc}</p>
+                            <p style={{ fontSize: '1rem', color: '#64748b', lineHeight: 1.6 }}>{f.desc}</p>
                         </div>
                     ))}
                 </div>
@@ -220,13 +220,13 @@ export default function Home() {
             <section style={{ background: '#0f0f1a', borderTop: '1px solid #1e1e30', borderBottom: '1px solid #1e1e30', padding: '60px var(--section-px)' }}>
                 <div className="community-grid" style={{ maxWidth: 1100, margin: '0 auto' }}>
                     <div>
-                        <span className="font-mono" style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                        <span className="font-mono" style={{ color: '#475569', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
               // COMMUNITY SIGNALS
                         </span>
                         <h2 className="font-pixel" style={{ fontSize: '1.8rem', color: '#e2e8f0', marginTop: 8, marginBottom: 16 }}>
                             React faster than text
                         </h2>
-                        <p style={{ fontSize: '0.85rem', color: '#64748b', lineHeight: 1.7 }}>
+                        <p style={{ fontSize: '1rem', color: '#64748b', lineHeight: 1.7 }}>
                             Quick-fire reactions replace long threads. One tap to signal what the crowd thinks.
                         </p>
                     </div>
@@ -258,7 +258,7 @@ export default function Home() {
                                     e.currentTarget.style.borderColor = `${r.color}33`;
                                 }}
                             >
-                                <span className="font-mono" style={{ fontSize: '0.72rem', color: r.color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                <span className="font-mono" style={{ fontSize: '0.9rem', color: r.color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                     {r.label}
                                 </span>
                             </div>
@@ -269,14 +269,14 @@ export default function Home() {
 
             {/* ── CTA ── */}
             <section style={{ maxWidth: 1100, margin: '0 auto', padding: '100px var(--section-px)', textAlign: 'center' }}>
-                <span className="font-mono" style={{ color: '#475569', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', marginBottom: 16 }}>
+                <span className="font-mono" style={{ color: '#475569', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', marginBottom: 16 }}>
           // LAUNCH YOUR APP AS A MARKET
                 </span>
                 <h2 className="font-pixel" style={{ fontSize: 'clamp(2rem, 4vw, 3.2rem)', color: '#e2e8f0', marginBottom: 20, lineHeight: 1.1 }}>
                     Ship it.<br />
                     <span style={{ color: '#7c3aed', textShadow: '0 0 30px rgba(124,58,237,0.6)' }}>Let the market watch.</span>
                 </h2>
-                <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: 40, maxWidth: 480, margin: '0 auto 40px' }}>
+                <p style={{ color: '#64748b', fontSize: '1.05rem', marginBottom: 40, maxWidth: 480, margin: '0 auto 40px' }}>
                     Launch your app as a Solana token. Ship fast. Build reputation. Let traders bet on your execution.
                 </p>
                 <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>

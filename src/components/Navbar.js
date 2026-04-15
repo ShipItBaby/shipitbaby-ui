@@ -157,7 +157,7 @@ export default function Navbar() {
                 <a
                     href="/faq"
                     className="font-mono"
-                    style={{ fontSize: '0.78rem', color: '#64748b', textDecoration: 'none', textTransform: 'uppercase', letterSpacing: '0.06em' }}
+                    style={{ fontSize: '0.9rem', color: '#64748b', textDecoration: 'none', textTransform: 'uppercase', letterSpacing: '0.06em' }}
                     onMouseEnter={e => e.target.style.color = '#a78bfa'}
                     onMouseLeave={e => e.target.style.color = '#64748b'}
                 >
