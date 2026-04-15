@@ -3,9 +3,10 @@ import { supabase } from '@/lib/supabase';
 
 export async function POST(request) {
     let wallet;
+    let connected_wallet_type;
 
     try {
-        ({ wallet } = await request.json());
+        ({ wallet, connected_wallet_type } = await request.json());
     } catch {
         return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
@@ -19,7 +20,7 @@ export async function POST(request) {
     const { data, error } = await supabase
         .from('users')
         .upsert(
-            { wallet, last_seen_at: now, updated_at: now },
+            { wallet, connected_wallet_type, last_seen_at: now, updated_at: now },
             { onConflict: 'wallet', ignoreDuplicates: false }
         )
         .select()

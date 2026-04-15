@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { PhantomIcon } from './icons';
+import { useRouter } from 'next/navigation';
+import { PhantomIcon, SolflareIcon } from './icons';
 
 const SHORT_ADDRESS_START = 4;
 const SHORT_ADDRESS_END = 4;
@@ -10,12 +11,12 @@ function shortenAddress(address) {
     return `${address.slice(0, SHORT_ADDRESS_START)}...${address.slice(-SHORT_ADDRESS_END)}`;
 }
 
-async function syncUserWithDB(wallet) {
+async function syncUserWithDB(wallet, connected_wallet_type = null) {
     try {
         await fetch('/api/users', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ wallet }),
+            body: JSON.stringify({ wallet, connected_wallet_type }),
         });
     } catch (err) {
         console.error('Failed to sync user with DB:', err);
@@ -23,6 +24,7 @@ async function syncUserWithDB(wallet) {
 }
 
 export default function Navbar() {
+    const router = useRouter();
     const [walletAddress, setWalletAddress] = useState(null);
     const [showPopup, setShowPopup] = useState(false);
     const [connecting, setConnecting] = useState(false);
@@ -31,15 +33,36 @@ export default function Navbar() {
     // Silently restore session if user already approved this site
     useEffect(() => {
         async function tryAutoConnect() {
-            try {
-                const phantom = window?.solana;
-                if (!phantom?.isPhantom) return;
-                const response = await phantom.connect({ onlyIfTrusted: true });
-                const address = response.publicKey.toString();
-                setWalletAddress(address);
-                syncUserWithDB(address);
-            } catch {
-                // Not previously connected — do nothing
+            const autoConnect = localStorage.getItem('autoConnect');
+            if (!autoConnect) return;
+
+            if (autoConnect === 'phantom') {
+                try {
+                    const phantom = window?.solana;
+                    if (phantom?.isPhantom) {
+                        const response = await phantom.connect({ onlyIfTrusted: true });
+                        const address = response.publicKey.toString();
+                        setWalletAddress(address);
+                        syncUserWithDB(address, 'phantom');
+                        return;
+                    }
+                } catch {
+                    // Not previously connected — do nothing
+                }
+            } else if (autoConnect === 'solflare') {
+                try {
+                    const solflare = window?.solflare;
+                    if (solflare?.isSolflare) {
+                        await solflare.connect();
+                        if (solflare.isConnected) {
+                            const address = solflare.publicKey.toString();
+                            setWalletAddress(address);
+                            syncUserWithDB(address, 'solflare');
+                        }
+                    }
+                } catch {
+                    // Not previously connected
+                }
             }
         }
         tryAutoConnect();
@@ -67,9 +90,10 @@ export default function Navbar() {
             setConnecting(true);
             const response = await phantom.connect();
             const address = response.publicKey.toString();
+            localStorage.setItem('autoConnect', 'phantom');
             setWalletAddress(address);
             setShowPopup(false);
-            syncUserWithDB(address);
+            syncUserWithDB(address, 'phantom');
         } catch (err) {
             console.error('Phantom connection error:', err);
         } finally {
@@ -77,8 +101,31 @@ export default function Navbar() {
         }
     }
 
+    async function connectSolflare() {
+        try {
+            const solflare = window?.solflare;
+            if (!solflare?.isSolflare) {
+                window.open('https://solflare.com/', '_blank');
+                return;
+            }
+            setConnecting(true);
+            await solflare.connect();
+            const address = solflare.publicKey.toString();
+            localStorage.setItem('autoConnect', 'solflare');
+            setWalletAddress(address);
+            setShowPopup(false);
+            syncUserWithDB(address, 'solflare');
+        } catch (err) {
+            console.error('Solflare connection error:', err);
+        } finally {
+            setConnecting(false);
+        }
+    }
+
     function disconnect() {
         window?.solana?.disconnect();
+        window?.solflare?.disconnect();
+        localStorage.removeItem('autoConnect');
         setWalletAddress(null);
     }
 
@@ -115,7 +162,7 @@ export default function Navbar() {
                 <div style={{ position: 'relative' }} ref={popupRef}>
                     {walletAddress ? (
                         <button
-                            onClick={disconnect}
+                            onClick={() => router.push('/profile')}
                             className="btn-pixel btn-pixel-primary font-mono"
                             style={{ padding: '6px 18px', fontSize: '0.75rem', cursor: 'pointer' }}
                         >
@@ -153,13 +200,34 @@ export default function Navbar() {
                                     cursor: connecting ? 'not-allowed' : 'pointer',
                                     transition: 'border-color 0.15s, background 0.15s',
                                     opacity: connecting ? 0.6 : 1,
+                                    marginBottom: '8px'
                                 }}
                                 onMouseEnter={e => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.background = 'rgba(124,58,237,0.08)'; }}
                                 onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e1e30'; e.currentTarget.style.background = 'transparent'; }}
                             >
                                 <PhantomIcon size={22} color="#ab9ff2" />
                                 <span className="font-mono" style={{ fontSize: '0.78rem', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                    {connecting ? 'Connecting…' : 'Phantom'}
+                                    Phantom
+                                </span>
+                            </button>
+
+                            <button
+                                onClick={connectSolflare}
+                                disabled={connecting}
+                                style={{
+                                    display: 'flex', alignItems: 'center', gap: 10,
+                                    width: '100%', background: 'transparent',
+                                    border: '1px solid #1e1e30', padding: '10px 12px',
+                                    cursor: connecting ? 'not-allowed' : 'pointer',
+                                    transition: 'border-color 0.15s, background 0.15s',
+                                    opacity: connecting ? 0.6 : 1,
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.borderColor = '#ffef46'; e.currentTarget.style.background = 'rgba(255,239,70,0.08)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e1e30'; e.currentTarget.style.background = 'transparent'; }}
+                            >
+                                <SolflareIcon size={22} />
+                                <span className="font-mono" style={{ fontSize: '0.78rem', color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    Solflare
                                 </span>
                             </button>
                         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { XIcon } from '@/components/icons';
+import { XIcon, GithubIcon } from '@/components/icons';
 
 /**
  * Reusable site-wide footer.
@@ -56,6 +56,23 @@ export default function Footer({ maxWidth = '1100px' }) {
             onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
           >
             <XIcon size={20} />
+          </a>
+
+          <a
+            href="https://github.com/ShipItBaby"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="ShipIt on GitHub"
+            style={{
+              color: '#475569',
+              display: 'flex',
+              alignItems: 'center',
+              transition: 'color 0.18s ease',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.color = '#e2e8f0')}
+            onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
+          >
+            <GithubIcon size={20} />
           </a>
 
           <span className="font-mono" style={{ fontSize: '0.65rem', color: '#2d2d40' }}>
