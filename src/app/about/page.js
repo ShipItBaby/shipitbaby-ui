@@ -105,6 +105,6 @@ function Row({ icon, title, desc }) {
 // ── Main ────────────────────────────────────────────────────────────────────
 export default function About() {
   return (
-    <div>About</div>
+    <div>You are too early here</div>
   );
 }
