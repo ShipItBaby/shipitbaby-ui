@@ -64,6 +64,9 @@ export const metadata = {
   ],
   authors: [{ name: 'ShipIt', url: 'https://shipit.baby' }],
   creator: 'ShipIt',
+};
+
+export const viewport = {
   themeColor: '#0a0a0f',
 };
 

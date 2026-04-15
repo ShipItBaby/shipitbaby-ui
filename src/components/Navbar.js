@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { PhantomIcon, SolflareIcon } from './icons';
 
 const SHORT_ADDRESS_START = 4;
@@ -136,17 +137,19 @@ export default function Navbar() {
             background: 'rgba(10,10,15,0.95)', backdropFilter: 'blur(10px)',
             position: 'sticky', top: 0, zIndex: 100,
         }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span className="font-pixel" style={{ fontSize: '1.6rem', color: '#7c3aed', textShadow: '0 0 20px rgba(124,58,237,0.8)' }}>
-                    ShipIt.Baby
-                </span>
-                <span style={{
-                    fontSize: '0.6rem', fontFamily: 'Share Tech Mono', textTransform: 'uppercase',
-                    color: '#475569', letterSpacing: '0.1em', marginTop: 4,
-                }}>
-                    beta
-                </span>
-            </div>
+            <Link href="/" style={{ textDecoration: 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span className="font-pixel" style={{ fontSize: '1.6rem', color: '#7c3aed', textShadow: '0 0 20px rgba(124,58,237,0.8)' }}>
+                        ShipIt.Baby
+                    </span>
+                    <span style={{
+                        fontSize: '0.6rem', fontFamily: 'Share Tech Mono', textTransform: 'uppercase',
+                        color: '#475569', letterSpacing: '0.1em', marginTop: 4,
+                    }}>
+                        beta
+                    </span>
+                </div>
+            </Link>
 
             <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
                 <a
