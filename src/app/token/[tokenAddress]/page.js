@@ -19,6 +19,7 @@ const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xW
 const GLOBAL_CONFIG_SEED = new TextEncoder().encode('global-config');
 const FEE_VAULT_SEED = new TextEncoder().encode('fee-vault');
 const BONDING_CURVE_SEED = new TextEncoder().encode('bonding-curve');
+const BUILDER_FEE_VAULT_SEED = new TextEncoder().encode('builder-fee-vault');
 const BUY_DIRECTION = 0;
 const SELL_DIRECTION = 1;
 const SOL_DECIMALS = 9;
@@ -64,6 +65,48 @@ function formatUnits(rawAmount, decimals, maxFractionDigits = 6) {
     return `${whole.toString()}.${trimmed}`;
 }
 
+function toNonNullBigInt(value) {
+    const asBigInt = toBigIntValue(value);
+    return asBigInt === null ? 0n : asBigInt;
+}
+
+function isU64IntegerString(value) {
+    return /^[0-9]+$/.test(value);
+}
+
+function formatLamportsAndSol(lamportsLike) {
+    const lamports = toNonNullBigInt(lamportsLike);
+    return `${lamports.toString()} lamports (${formatUnits(lamports.toString(), SOL_DECIMALS, SOL_DECIMALS)} SOL)`;
+}
+
+function createEmptyBuilderClaimOverview() {
+    return {
+        initialized: false,
+        builder: '',
+        accruedBuilderFees: '0',
+        builderFeeVaultLamports: '0',
+        builderFeeVaultWithdrawable: '0',
+        claimableBuilderFees: '0',
+        canWalletClaim: false,
+    };
+}
+
+function deriveBuilderClaimAccounts(programId, tokenMint) {
+    const [bondingCurve] = PublicKey.findProgramAddressSync(
+        [BONDING_CURVE_SEED, tokenMint.toBytes()],
+        programId
+    );
+    const [builderFeeVault] = PublicKey.findProgramAddressSync(
+        [BUILDER_FEE_VAULT_SEED, tokenMint.toBytes()],
+        programId
+    );
+
+    return {
+        bondingCurve,
+        builderFeeVault,
+    };
+}
+
 function deriveSwapAccounts(programId, user, tokenMint) {
     const [globalConfig] = PublicKey.findProgramAddressSync(
         [GLOBAL_CONFIG_SEED],
@@ -73,10 +116,7 @@ function deriveSwapAccounts(programId, user, tokenMint) {
         [FEE_VAULT_SEED],
         programId
     );
-    const [bondingCurve] = PublicKey.findProgramAddressSync(
-        [BONDING_CURVE_SEED, tokenMint.toBytes()],
-        programId
-    );
+    const { bondingCurve, builderFeeVault } = deriveBuilderClaimAccounts(programId, tokenMint);
     const [curveTokenAccount] = PublicKey.findProgramAddressSync(
         [bondingCurve.toBytes(), TOKEN_PROGRAM_ID.toBytes(), tokenMint.toBytes()],
         ASSOCIATED_TOKEN_PROGRAM_ID
@@ -90,6 +130,7 @@ function deriveSwapAccounts(programId, user, tokenMint) {
         globalConfig,
         feeVault,
         bondingCurve,
+        builderFeeVault,
         curveTokenAccount,
         userTokenAccount,
     };
@@ -175,6 +216,12 @@ export default function TokenDetailsPage() {
     const [quoteStatus, setQuoteStatus] = useState('idle');
     const [quoteError, setQuoteError] = useState(null);
     const [quoteOutRaw, setQuoteOutRaw] = useState(null);
+    const [builderClaimOverview, setBuilderClaimOverview] = useState(createEmptyBuilderClaimOverview);
+    const [builderClaimAmount, setBuilderClaimAmount] = useState('');
+    const [builderClaimStatus, setBuilderClaimStatus] = useState('idle');
+    const [builderClaimError, setBuilderClaimError] = useState(null);
+    const [builderClaimTx, setBuilderClaimTx] = useState(null);
+    const [isClaimingBuilderFees, setIsClaimingBuilderFees] = useState(false);
     const quoteRequestIdRef = useRef(0);
 
     const validTokenAddress = useMemo(() => {
@@ -238,6 +285,26 @@ export default function TokenDetailsPage() {
         return formatUnits(minOutRaw, outDecimals, 6);
     }, [minOutRaw, swapForm.side, tokenDecimals]);
 
+    const canClaimBuilderFees = useMemo(() => {
+        if (builderClaimStatus !== 'ready') return false;
+        if (!builderClaimOverview.initialized || !builderClaimOverview.canWalletClaim) return false;
+        if (isClaimingBuilderFees) return false;
+        if (!isU64IntegerString(builderClaimAmount) || builderClaimAmount === '0') return false;
+
+        try {
+            return BigInt(builderClaimAmount) <= BigInt(builderClaimOverview.claimableBuilderFees);
+        } catch {
+            return false;
+        }
+    }, [
+        builderClaimAmount,
+        builderClaimOverview.canWalletClaim,
+        builderClaimOverview.claimableBuilderFees,
+        builderClaimOverview.initialized,
+        builderClaimStatus,
+        isClaimingBuilderFees,
+    ]);
+
     useEffect(() => {
         setTokenDecimals(null);
         setTokenMintStatus('idle');
@@ -248,7 +315,102 @@ export default function TokenDetailsPage() {
         setWalletSolBalanceStatus('idle');
         setWalletSolBalanceError(null);
         setWalletSolBalanceParsed('0');
+        setBuilderClaimOverview(createEmptyBuilderClaimOverview());
+        setBuilderClaimAmount('');
+        setBuilderClaimStatus('idle');
+        setBuilderClaimError(null);
+        setBuilderClaimTx(null);
+        setIsClaimingBuilderFees(false);
     }, [validTokenAddress]);
+
+    const refreshBuilderClaimOverview = useCallback(async (options = {}) => {
+        const { silent = false } = options;
+
+        if (
+            accessStatus !== 'granted'
+            || !walletAddress
+            || !validTokenAddress
+            || !programConfig?.idl
+            || !programConfig?.contractAddress
+        ) {
+            setBuilderClaimOverview(createEmptyBuilderClaimOverview());
+            setBuilderClaimAmount('');
+            setBuilderClaimStatus('idle');
+            setBuilderClaimError(null);
+            return;
+        }
+
+        setBuilderClaimStatus('loading');
+        if (!silent) {
+            setBuilderClaimError(null);
+            setBuilderClaimTx(null);
+        }
+
+        try {
+            const walletProvider = getWalletProvider();
+            if (!walletProvider) throw new Error('Wallet provider not found');
+
+            const connection = new Connection(DEVNET_RPC, 'confirmed');
+            const provider = new AnchorProvider(
+                connection,
+                walletProvider,
+                { preflightCommitment: 'confirmed' }
+            );
+
+            const normalizedIdl = {
+                ...programConfig.idl,
+                address: programConfig.contractAddress,
+            };
+            const program = new Program(normalizedIdl, provider);
+            const tokenMint = new PublicKey(validTokenAddress);
+            const claimAccounts = deriveBuilderClaimAccounts(program.programId, tokenMint);
+
+            const curveAccount = await program.account.bondingCurve.fetch(claimAccounts.bondingCurve);
+
+            const builder = curveAccount.builder?.toBase58
+                ? curveAccount.builder.toBase58()
+                : String(curveAccount.builder || '');
+            const accruedBuilderFees = toNonNullBigInt(
+                curveAccount.accruedBuilderFees ?? curveAccount.accrued_builder_fees ?? 0
+            );
+
+            const builderFeeVaultInfo = await connection.getAccountInfo(claimAccounts.builderFeeVault, 'confirmed');
+            const builderFeeVaultLamports = toNonNullBigInt(builderFeeVaultInfo?.lamports ?? 0);
+            const rentExemptMinimum = toNonNullBigInt(
+                await connection.getMinimumBalanceForRentExemption(builderFeeVaultInfo?.data?.length ?? 0)
+            );
+            const builderFeeVaultWithdrawable =
+                builderFeeVaultLamports > rentExemptMinimum
+                    ? builderFeeVaultLamports - rentExemptMinimum
+                    : 0n;
+            const claimableBuilderFees =
+                accruedBuilderFees < builderFeeVaultWithdrawable
+                    ? accruedBuilderFees
+                    : builderFeeVaultWithdrawable;
+            const canWalletClaim = walletAddress === builder;
+
+            setBuilderClaimOverview({
+                initialized: true,
+                builder,
+                accruedBuilderFees: accruedBuilderFees.toString(),
+                builderFeeVaultLamports: builderFeeVaultLamports.toString(),
+                builderFeeVaultWithdrawable: builderFeeVaultWithdrawable.toString(),
+                claimableBuilderFees: claimableBuilderFees.toString(),
+                canWalletClaim,
+            });
+            setBuilderClaimAmount((prev) => (prev ? prev : claimableBuilderFees.toString()));
+            setBuilderClaimStatus('ready');
+        } catch (err) {
+            setBuilderClaimStatus('error');
+            if (!silent) {
+                setBuilderClaimError(err?.message || 'Failed to load builder claim overview');
+            }
+        }
+    }, [accessStatus, getWalletProvider, programConfig, validTokenAddress, walletAddress]);
+
+    useEffect(() => {
+        refreshBuilderClaimOverview({ silent: true });
+    }, [refreshBuilderClaimOverview, swapTx, builderClaimTx]);
 
     useEffect(() => {
         async function restoreWalletSession() {
@@ -750,6 +912,7 @@ export default function TokenDetailsPage() {
                     user,
                     globalConfig: swapAccounts.globalConfig,
                     feeVault: swapAccounts.feeVault,
+                    builderFeeVault: swapAccounts.builderFeeVault,
                     bondingCurve: swapAccounts.bondingCurve,
                     tokenMint,
                     curveTokenAccount: swapAccounts.curveTokenAccount,
@@ -774,6 +937,67 @@ export default function TokenDetailsPage() {
             }
         } finally {
             setIsSwapping(false);
+        }
+    }
+
+    async function handleClaimBuilderFees() {
+        if (!canClaimBuilderFees) return;
+        setIsClaimingBuilderFees(true);
+        setBuilderClaimError(null);
+        setBuilderClaimTx(null);
+
+        try {
+            if (!isU64IntegerString(builderClaimAmount) || builderClaimAmount === '0') {
+                throw new Error('Claim amount must be a positive integer lamports value');
+            }
+            if (!validTokenAddress) {
+                throw new Error('Invalid token address');
+            }
+            if (!programConfig?.idl || !programConfig?.contractAddress) {
+                throw new Error('Program config is not loaded');
+            }
+
+            const walletProvider = getWalletProvider();
+            if (!walletProvider) throw new Error('Wallet provider not found');
+
+            const connection = new Connection(DEVNET_RPC, 'confirmed');
+            const provider = new AnchorProvider(
+                connection,
+                walletProvider,
+                { preflightCommitment: 'confirmed' }
+            );
+            if (!provider.publicKey) throw new Error('Provider public key missing');
+
+            const normalizedIdl = {
+                ...programConfig.idl,
+                address: programConfig.contractAddress,
+            };
+            const program = new Program(normalizedIdl, provider);
+
+            const tokenMint = new PublicKey(validTokenAddress);
+            const claimAccounts = deriveBuilderClaimAccounts(program.programId, tokenMint);
+            const tx = await program.methods
+                .claimBuilderFees(new BN(builderClaimAmount))
+                .accounts({
+                    builder: provider.publicKey,
+                    tokenMint,
+                    bondingCurve: claimAccounts.bondingCurve,
+                    builderFeeVault: claimAccounts.builderFeeVault,
+                    systemProgram: SystemProgram.programId,
+                })
+                .rpc({
+                    skipPreflight: true,
+                    preflightCommitment: 'confirmed',
+                    commitment: 'confirmed',
+                    maxRetries: 5,
+                });
+
+            setBuilderClaimTx(tx);
+            await refreshBuilderClaimOverview({ silent: true });
+        } catch (err) {
+            setBuilderClaimError(err?.message || 'Claim failed');
+        } finally {
+            setIsClaimingBuilderFees(false);
         }
     }
 
@@ -847,6 +1071,101 @@ export default function TokenDetailsPage() {
                                     View On Solscan
                                 </a>
                             </div>
+                        </div>
+
+                        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 24 }}>
+                            <p className="font-mono" style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                Builder Fee Claim
+                            </p>
+
+                            {builderClaimStatus === 'loading' && (
+                                <p className="font-mono" style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                                    Loading builder fee state...
+                                </p>
+                            )}
+
+                            {builderClaimStatus === 'error' && builderClaimError && (
+                                <p className="font-mono" style={{ fontSize: '0.78rem', color: '#ef4444' }}>
+                                    {builderClaimError}
+                                </p>
+                            )}
+
+                            {builderClaimStatus === 'ready' && (
+                                <>
+                                    <div className="font-mono" style={{ color: '#cbd5e1', display: 'grid', gap: 6, fontSize: '0.85rem' }}>
+                                        <div>Builder wallet: {builderClaimOverview.builder || 'unknown'}</div>
+                                        <div>Accrued builder fees: {formatLamportsAndSol(builderClaimOverview.accruedBuilderFees)}</div>
+                                        <div>Builder fee vault withdrawable: {formatLamportsAndSol(builderClaimOverview.builderFeeVaultWithdrawable)}</div>
+                                        <div>Available to claim now: {formatLamportsAndSol(builderClaimOverview.claimableBuilderFees)}</div>
+                                    </div>
+
+                                    {!builderClaimOverview.canWalletClaim && (
+                                        <p className="font-mono" style={{ fontSize: '0.78rem', color: '#f59e0b' }}>
+                                            Connected wallet is not this token&apos;s builder. Claim button is only shown for the builder wallet.
+                                        </p>
+                                    )}
+
+                                    {builderClaimOverview.canWalletClaim && (
+                                        <>
+                                            <input
+                                                type="text"
+                                                value={builderClaimAmount}
+                                                onChange={(e) => setBuilderClaimAmount(e.target.value.trim())}
+                                                placeholder="Claim amount (lamports)"
+                                                className="font-mono"
+                                                style={{ padding: '12px', background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0' }}
+                                            />
+
+                                            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setBuilderClaimAmount(builderClaimOverview.claimableBuilderFees)}
+                                                    className="btn-pixel"
+                                                    style={{
+                                                        border: '1px solid #64748b',
+                                                        color: '#cbd5e1',
+                                                        boxShadow: 'none',
+                                                    }}
+                                                >
+                                                    Use Max Claimable
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => refreshBuilderClaimOverview()}
+                                                    className="btn-pixel"
+                                                    style={{
+                                                        border: '1px solid #f59e0b',
+                                                        color: '#f59e0b',
+                                                        boxShadow: 'none',
+                                                    }}
+                                                >
+                                                    Refresh Claimable
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    disabled={!canClaimBuilderFees}
+                                                    onClick={handleClaimBuilderFees}
+                                                    className="btn-pixel"
+                                                    style={{
+                                                        border: '1px solid #22c55e',
+                                                        color: canClaimBuilderFees ? '#22c55e' : '#64748b',
+                                                        boxShadow: 'none',
+                                                        cursor: canClaimBuilderFees ? 'pointer' : 'not-allowed',
+                                                    }}
+                                                >
+                                                    {isClaimingBuilderFees ? 'Claiming...' : 'Claim Builder Fees'}
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {builderClaimTx && (
+                                        <div className="font-mono" style={{ color: '#06d6a0', fontSize: '0.8rem', wordBreak: 'break-all' }}>
+                                            Builder claim tx: {builderClaimTx}
+                                        </div>
+                                    )}
+                                </>
+                            )}
                         </div>
 
                         <form onSubmit={handleSwap} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 24 }}>
