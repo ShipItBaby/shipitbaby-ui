@@ -1,35 +1,17 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getSessionWalletFromRequest } from '@/lib/authSession';
 
 /**
  * Higher-order function that wraps an API route handler and ensures
- * the requesting wallet belongs to a beta user.
- *
- * Expects the wallet address to be provided as:
- *   - GET  → ?wallet= query parameter
- *   - POST → { wallet } in the JSON body
- *
- * Returns 400 if wallet is missing, 403 if the user is not a beta user.
+ * the requesting authenticated wallet belongs to a beta user.
+ * Wallet is read from the signed HttpOnly session cookie.
  */
 export function withBeta(handler) {
     return async function (request, context) {
-        let wallet;
-
-        if (request.method === 'GET') {
-            const { searchParams } = new URL(request.url);
-            wallet = searchParams.get('wallet');
-        } else {
-            try {
-                const cloned = request.clone();
-                const body = await cloned.json();
-                wallet = body.wallet;
-            } catch {
-                return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
-            }
-        }
-
-        if (!wallet || typeof wallet !== 'string') {
-            return NextResponse.json({ error: 'wallet is required' }, { status: 400 });
+        const wallet = getSessionWalletFromRequest(request);
+        if (!wallet) {
+            return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
         }
 
         const { data: user, error } = await supabase

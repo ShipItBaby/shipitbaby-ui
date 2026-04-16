@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PhantomIcon, SolflareIcon } from './icons';
+import { clearWalletSession } from '@/lib/walletAuthClient';
 
 const SHORT_ADDRESS_START = 4;
 const SHORT_ADDRESS_END = 4;
@@ -124,7 +125,8 @@ export default function Navbar() {
         }
     }
 
-    function disconnect() {
+    async function disconnect() {
+        await clearWalletSession();
         window?.solana?.disconnect();
         window?.solflare?.disconnect();
         localStorage.removeItem('autoConnect');

@@ -13,6 +13,10 @@ import { AnchorProvider, Program } from '@coral-xyz/anchor';
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
 import { PhantomIcon, SolflareIcon, GithubIcon } from '@/components/icons';
+import {
+    clearWalletSession,
+    ensureWalletSession,
+} from '@/lib/walletAuthClient';
 
 const DEVNET_RPC = 'https://api.devnet.solana.com';
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
@@ -53,8 +57,12 @@ export default function Profile() {
         setLaunchSuccess(null);
 
         try {
+            const walletProvider = getWalletProvider();
+            if (!walletProvider) throw new Error('Wallet not connected');
+            await ensureWalletSession(walletProvider, walletAddress);
+
             // 1. Fetch IDL + contract address from beta-protected API
-            const idlRes = await fetch(`/api/launch/idl?wallet=${walletAddress}`);
+            const idlRes = await fetch('/api/launch/idl');
             if (!idlRes.ok) {
                 const errData = await idlRes.json().catch(() => ({}));
                 throw new Error(errData.error || 'Failed to fetch IDL');
@@ -62,9 +70,6 @@ export default function Profile() {
             const { idl, contractAddress } = await idlRes.json();
 
             // 2. Build Anchor provider from the connected wallet
-            const walletProvider = getWalletProvider();
-            if (!walletProvider) throw new Error('Wallet not connected');
-
             const connection = new Connection(DEVNET_RPC, 'confirmed');
             const provider = new AnchorProvider(
                 connection,
@@ -150,6 +155,30 @@ export default function Profile() {
     }, []);
 
     useEffect(() => {
+        if (!walletAddress) return;
+
+        let cancelled = false;
+
+        async function establishWalletSession() {
+            try {
+                const walletProvider = getWalletProvider();
+                if (!walletProvider) return;
+                await ensureWalletSession(walletProvider, walletAddress);
+            } catch (err) {
+                if (!cancelled) {
+                    console.error('Failed to establish wallet session', err);
+                }
+            }
+        }
+
+        establishWalletSession();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [getWalletProvider, walletAddress]);
+
+    useEffect(() => {
         async function fetchUserDetails() {
             if (!walletAddress) return;
             try {
@@ -170,6 +199,7 @@ export default function Profile() {
 
     async function handleLogout() {
         try {
+            await clearWalletSession();
             if (walletType === 'phantom' && window?.solana) {
                 await window.solana.disconnect();
             } else if (walletType === 'solflare' && window?.solflare) {
