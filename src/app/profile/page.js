@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { AnchorProvider, Program } from '@coral-xyz/anchor';
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
 import { PhantomIcon, SolflareIcon, GithubIcon } from '@/components/icons';
+
+const DEVNET_RPC = 'https://api.devnet.solana.com';
 
 const SHORT_ADDRESS_START = 4;
 const SHORT_ADDRESS_END = 4;
@@ -19,8 +23,64 @@ export default function Profile() {
     const [walletAddress, setWalletAddress] = useState(null);
     const [walletType, setWalletType] = useState(null);
     const [githubUsername, setGithubUsername] = useState(null);
+    const [isBeta, setIsBeta] = useState(false);
     const [isUpdating, setIsUpdating] = useState(false);
     const [isUnlinking, setIsUnlinking] = useState(false);
+    const [showLaunchModal, setShowLaunchModal] = useState(false);
+    const [launchForm, setLaunchForm] = useState({ name: '', symbol: '', uri: '' });
+    const [isLaunching, setIsLaunching] = useState(false);
+    const [launchError, setLaunchError] = useState(null);
+    const [launchSuccess, setLaunchSuccess] = useState(null);
+
+    const getWalletProvider = useCallback(() => {
+        if (walletType === 'phantom') return window?.solana;
+        if (walletType === 'solflare') return window?.solflare;
+        return null;
+    }, [walletType]);
+
+    async function handleLaunch() {
+        setIsLaunching(true);
+        setLaunchError(null);
+        setLaunchSuccess(null);
+
+        try {
+            // 1. Fetch IDL + contract address from beta-protected API
+            const idlRes = await fetch(`/api/launch/idl?wallet=${walletAddress}`);
+            if (!idlRes.ok) {
+                const errData = await idlRes.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed to fetch IDL');
+            }
+            const { idl, contractAddress } = await idlRes.json();
+
+            // 2. Build Anchor provider from the connected wallet
+            const walletProvider = getWalletProvider();
+            if (!walletProvider) throw new Error('Wallet not connected');
+
+            const connection = new Connection(DEVNET_RPC, 'confirmed');
+            const provider = new AnchorProvider(
+                connection,
+                walletProvider,
+                { preflightCommitment: 'confirmed' }
+            );
+
+            // 3. Create program instance
+            const programId = new PublicKey(contractAddress);
+            const program = new Program(idl, programId, provider);
+
+            // 4. Call the launch instruction
+            const tx = await program.methods
+                .launch(launchForm.name, launchForm.symbol, launchForm.uri)
+                .rpc();
+
+            setLaunchSuccess(tx);
+            console.log('Launch tx:', tx);
+        } catch (err) {
+            console.error('Launch error:', err);
+            setLaunchError(err?.message || 'Launch failed');
+        } finally {
+            setIsLaunching(false);
+        }
+    }
 
     useEffect(() => {
         async function fetchWallet() {
@@ -67,6 +127,7 @@ export default function Profile() {
                     if (user?.github_username) {
                         setGithubUsername(user.github_username);
                     }
+                    setIsBeta(user?.is_beta === true);
                 }
             } catch (err) {
                 console.error("Failed to fetch user details", err);
@@ -242,6 +303,43 @@ export default function Profile() {
                                 </button>
                             )}
                         </div>
+
+                        {/* Launch App */}
+                        {isBeta ? (
+                            <button
+                                onClick={() => setShowLaunchModal(true)}
+                                className="font-mono"
+                                style={{
+                                    padding: '14px 28px', fontSize: '0.9rem', cursor: 'pointer',
+                                    background: '#06d6a0', color: '#0a0a0f', border: 'none',
+                                    textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700,
+                                    transition: 'all 0.2s', boxShadow: '4px 4px 0px rgba(0,0,0,0.4)',
+                                    alignSelf: 'flex-start',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.background = '#05c490'; e.currentTarget.style.boxShadow = '4px 4px 0px rgba(6,214,160,0.3)'; }}
+                                onMouseLeave={e => { e.currentTarget.style.background = '#06d6a0'; e.currentTarget.style.boxShadow = '4px 4px 0px rgba(0,0,0,0.4)'; }}
+                            >
+                                🚀 Launch App
+                            </button>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignSelf: 'flex-start' }}>
+                                <button
+                                    disabled
+                                    className="font-mono"
+                                    style={{
+                                        padding: '14px 28px', fontSize: '0.9rem', cursor: 'not-allowed',
+                                        background: 'rgba(6,214,160,0.1)', color: 'rgba(6,214,160,0.35)', border: '1px solid rgba(6,214,160,0.2)',
+                                        textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700,
+                                        boxShadow: 'none',
+                                    }}
+                                >
+                                    🚀 Launch App
+                                </button>
+                                <span className="font-mono" style={{ fontSize: '0.72rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>
+                                    Beta users only for now
+                                </span>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div style={{
@@ -256,6 +354,165 @@ export default function Profile() {
             </main>
 
             <Footer />
+
+            {/* Launch Modal */}
+            {showLaunchModal && (
+                <div
+                    style={{
+                        position: 'fixed', inset: 0, zIndex: 1000,
+                        background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: 24,
+                    }}
+                    onClick={() => { if (!isLaunching) setShowLaunchModal(false); }}
+                >
+                    <div
+                        style={{
+                            background: '#0f0f1a', border: '1px solid #1e1e30',
+                            padding: 32, width: '100%', maxWidth: 460,
+                            boxShadow: '8px 8px 0px rgba(0,0,0,0.5)',
+                        }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 28 }}>
+                            <h2 className="font-pixel" style={{ fontSize: '1.6rem', color: '#e2e8f0', margin: 0 }}>
+                                🚀 Launch App
+                            </h2>
+                            <button
+                                onClick={() => { if (!isLaunching) setShowLaunchModal(false); }}
+                                className="font-mono"
+                                style={{
+                                    background: 'transparent', border: 'none', color: '#64748b',
+                                    fontSize: '1.2rem', cursor: isLaunching ? 'not-allowed' : 'pointer',
+                                    padding: '4px 8px', lineHeight: 1,
+                                }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <form
+                            onSubmit={e => {
+                                e.preventDefault();
+                                handleLaunch();
+                            }}
+                            style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
+                        >
+                            {/* Name */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <label className="font-mono" style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    App Name
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={launchForm.name}
+                                    onChange={e => setLaunchForm(prev => ({ ...prev, name: e.target.value }))}
+                                    placeholder="My Awesome App"
+                                    className="font-mono"
+                                    style={{
+                                        padding: '10px 14px', fontSize: '0.9rem',
+                                        background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0',
+                                        outline: 'none', transition: 'border-color 0.2s',
+                                    }}
+                                    onFocus={e => { e.currentTarget.style.borderColor = '#06d6a0'; }}
+                                    onBlur={e => { e.currentTarget.style.borderColor = '#1e1e30'; }}
+                                />
+                            </div>
+
+                            {/* Symbol */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <label className="font-mono" style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    Ticker Symbol
+                                </label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={launchForm.symbol}
+                                    onChange={e => setLaunchForm(prev => ({ ...prev, symbol: e.target.value.toUpperCase() }))}
+                                    placeholder="APP"
+                                    className="font-mono"
+                                    style={{
+                                        padding: '10px 14px', fontSize: '0.9rem',
+                                        background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0',
+                                        outline: 'none', transition: 'border-color 0.2s',
+                                        textTransform: 'uppercase',
+                                    }}
+                                    onFocus={e => { e.currentTarget.style.borderColor = '#06d6a0'; }}
+                                    onBlur={e => { e.currentTarget.style.borderColor = '#1e1e30'; }}
+                                />
+                            </div>
+
+                            {/* URI */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <label className="font-mono" style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    Metadata URI
+                                </label>
+                                <input
+                                    type="url"
+                                    required
+                                    value={launchForm.uri}
+                                    onChange={e => setLaunchForm(prev => ({ ...prev, uri: e.target.value }))}
+                                    placeholder="https://arweave.net/..."
+                                    className="font-mono"
+                                    style={{
+                                        padding: '10px 14px', fontSize: '0.9rem',
+                                        background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0',
+                                        outline: 'none', transition: 'border-color 0.2s',
+                                    }}
+                                    onFocus={e => { e.currentTarget.style.borderColor = '#06d6a0'; }}
+                                    onBlur={e => { e.currentTarget.style.borderColor = '#1e1e30'; }}
+                                />
+                                <span className="font-mono" style={{ fontSize: '0.65rem', color: '#475569' }}>
+                                    Link to JSON metadata (image, description, etc.)
+                                </span>
+                            </div>
+
+                            {/* Error */}
+                            {launchError && (
+                                <div className="font-mono" style={{
+                                    padding: '10px 14px', fontSize: '0.78rem',
+                                    background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+                                    color: '#ef4444', wordBreak: 'break-word',
+                                }}>
+                                    {launchError}
+                                </div>
+                            )}
+
+                            {/* Success */}
+                            {launchSuccess && (
+                                <div className="font-mono" style={{
+                                    padding: '10px 14px', fontSize: '0.78rem',
+                                    background: 'rgba(6,214,160,0.1)', border: '1px solid rgba(6,214,160,0.3)',
+                                    color: '#06d6a0', wordBreak: 'break-all',
+                                }}>
+                                    Launched! Tx: {launchSuccess}
+                                </div>
+                            )}
+
+                            {/* Submit */}
+                            <button
+                                type="submit"
+                                disabled={isLaunching}
+                                className="font-mono"
+                                style={{
+                                    padding: '14px 28px', fontSize: '0.9rem',
+                                    cursor: isLaunching ? 'not-allowed' : 'pointer',
+                                    background: isLaunching ? 'rgba(6,214,160,0.4)' : '#06d6a0',
+                                    color: '#0a0a0f', border: 'none',
+                                    textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700,
+                                    transition: 'all 0.2s', boxShadow: '4px 4px 0px rgba(0,0,0,0.4)',
+                                    marginTop: 4,
+                                }}
+                                onMouseEnter={e => { if (!isLaunching) e.currentTarget.style.background = '#05c490'; }}
+                                onMouseLeave={e => { if (!isLaunching) e.currentTarget.style.background = '#06d6a0'; }}
+                            >
+                                {isLaunching ? 'Launching...' : 'Launch Token'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
