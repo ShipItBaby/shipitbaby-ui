@@ -12,7 +12,8 @@
 
 # testing
 /coverage
-
+*admin-config
+/scripts
 # next.js
 /.next/
 /out/

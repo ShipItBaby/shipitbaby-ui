@@ -11,12 +11,18 @@ export async function getShipitIdl() {
     }
 
     const idlUrl = process.env.SHIPIT_IDL;
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
 
     if (!idlUrl) {
         throw new Error('Missing environment variable: SHIPIT_IDL');
     }
 
-    const response = await fetch(idlUrl);
+    const headers = {};
+    if (blobToken) {
+        headers.Authorization = `Bearer ${blobToken}`;
+    }
+
+    const response = await fetch(idlUrl, { headers });
 
     if (!response.ok) {
         throw new Error(`Failed to fetch Shipit IDL: ${response.status} ${response.statusText}`);

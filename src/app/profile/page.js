@@ -2,13 +2,22 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Connection, PublicKey } from '@solana/web3.js';
+import {
+    Connection,
+    Keypair,
+    PublicKey,
+    SystemProgram,
+    SYSVAR_RENT_PUBKEY,
+} from '@solana/web3.js';
 import { AnchorProvider, Program } from '@coral-xyz/anchor';
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
 import { PhantomIcon, SolflareIcon, GithubIcon } from '@/components/icons';
 
 const DEVNET_RPC = 'https://api.devnet.solana.com';
+const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
 
 const SHORT_ADDRESS_START = 4;
 const SHORT_ADDRESS_END = 4;
@@ -64,12 +73,35 @@ export default function Profile() {
             );
 
             // 3. Create program instance
-            const programId = new PublicKey(contractAddress);
-            const program = new Program(idl, programId, provider);
+            // Anchor v0.32 reads the program id from `idl.address`.
+            const normalizedIdl = { ...idl, address: contractAddress };
+            const program = new Program(normalizedIdl, provider);
+            if (!provider.publicKey) throw new Error('Provider public key missing');
+
+            const tokenMint = Keypair.generate();
+            const [tokenMetadataAccount] = PublicKey.findProgramAddressSync(
+                [
+                    new TextEncoder().encode('metadata'),
+                    METADATA_PROGRAM_ID.toBytes(),
+                    tokenMint.publicKey.toBytes(),
+                ],
+                METADATA_PROGRAM_ID
+            );
 
             // 4. Call the launch instruction
             const tx = await program.methods
                 .launch(launchForm.name, launchForm.symbol, launchForm.uri)
+                .accounts({
+                    creator: provider.publicKey,
+                    tokenMint: tokenMint.publicKey,
+                    tokenMetadataAccount,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                    associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+                    metadataProgram: METADATA_PROGRAM_ID,
+                    systemProgram: SystemProgram.programId,
+                    rent: SYSVAR_RENT_PUBKEY,
+                })
+                .signers([tokenMint])
                 .rpc();
 
             setLaunchSuccess(tx);
