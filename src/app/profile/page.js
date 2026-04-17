@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
     Connection,
@@ -31,6 +31,13 @@ function shortenAddress(address) {
     return `${address.slice(0, SHORT_ADDRESS_START)}...${address.slice(-SHORT_ADDRESS_END)}`;
 }
 
+function formatDateTime(value) {
+    if (!value) return '';
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return '';
+    return parsed.toLocaleString();
+}
+
 export default function Profile() {
     const router = useRouter();
     const [walletAddress, setWalletAddress] = useState(null);
@@ -44,6 +51,10 @@ export default function Profile() {
     const [isLaunching, setIsLaunching] = useState(false);
     const [launchError, setLaunchError] = useState(null);
     const [launchSuccess, setLaunchSuccess] = useState(null);
+    const [deployedTokens, setDeployedTokens] = useState([]);
+    const [isLoadingTokens, setIsLoadingTokens] = useState(false);
+    const [tokensError, setTokensError] = useState(null);
+    const launchInFlightRef = useRef(false);
 
     const getWalletProvider = useCallback(() => {
         if (walletType === 'phantom') return window?.solana;
@@ -51,7 +62,36 @@ export default function Profile() {
         return null;
     }, [walletType]);
 
+    const fetchDeployedTokens = useCallback(async (wallet) => {
+        if (!wallet) {
+            setDeployedTokens([]);
+            setTokensError(null);
+            setIsLoadingTokens(false);
+            return;
+        }
+
+        setIsLoadingTokens(true);
+        setTokensError(null);
+
+        try {
+            const res = await fetch(`/api/tokens?wallet=${wallet}`);
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to load deployed tokens');
+            }
+
+            setDeployedTokens(Array.isArray(data.tokens) ? data.tokens : []);
+        } catch (err) {
+            setTokensError(err?.message || 'Failed to load deployed tokens');
+        } finally {
+            setIsLoadingTokens(false);
+        }
+    }, []);
+
     async function handleLaunch() {
+        if (launchInFlightRef.current || isLaunching) return;
+        launchInFlightRef.current = true;
         setIsLaunching(true);
         setLaunchError(null);
         setLaunchSuccess(null);
@@ -109,13 +149,32 @@ export default function Profile() {
                 .signers([tokenMint])
                 .rpc();
 
+            const tokenAddress = tokenMint.publicKey.toBase58();
+            const syncRes = await fetch('/api/tokens', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token_address: tokenAddress,
+                    ticker: launchForm.symbol,
+                    description: launchForm.name,
+                    metadata_link: launchForm.uri,
+                    deployment_tx: tx,
+                }),
+            });
+            if (!syncRes.ok) {
+                const syncData = await syncRes.json().catch(() => ({}));
+                throw new Error(syncData.error || 'Token deployed, but failed to save launch in database');
+            }
+
             setLaunchSuccess(tx);
+            await fetchDeployedTokens(walletAddress);
             console.log('Launch tx:', tx);
         } catch (err) {
             console.error('Launch error:', err);
             setLaunchError(err?.message || 'Launch failed');
         } finally {
             setIsLaunching(false);
+            launchInFlightRef.current = false;
         }
     }
 
@@ -197,6 +256,10 @@ export default function Profile() {
         fetchUserDetails();
     }, [walletAddress]);
 
+    useEffect(() => {
+        fetchDeployedTokens(walletAddress);
+    }, [fetchDeployedTokens, walletAddress]);
+
     async function handleLogout() {
         try {
             await clearWalletSession();
@@ -212,6 +275,9 @@ export default function Profile() {
             setWalletAddress(null);
             setWalletType(null);
             setGithubUsername(null);
+            setDeployedTokens([]);
+            setIsLoadingTokens(false);
+            setTokensError(null);
             router.push('/');
         }
     }
@@ -402,6 +468,102 @@ export default function Profile() {
                                 </span>
                             </div>
                         )}
+
+                        <div style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 12,
+                            background: 'rgba(20,20,30,0.6)',
+                            border: '1px solid #1e1e30',
+                            padding: '20px',
+                            borderRadius: '4px',
+                            width: '100%',
+                        }}>
+                            <div className="font-mono" style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                Deployed Tokens
+                            </div>
+
+                            {isLoadingTokens && (
+                                <div className="font-mono" style={{ color: '#64748b', fontSize: '0.82rem' }}>
+                                    Loading tokens...
+                                </div>
+                            )}
+
+                            {!isLoadingTokens && tokensError && (
+                                <div className="font-mono" style={{ color: '#ef4444', fontSize: '0.82rem' }}>
+                                    {tokensError}
+                                </div>
+                            )}
+
+                            {!isLoadingTokens && !tokensError && deployedTokens.length === 0 && (
+                                <div className="font-mono" style={{ color: '#475569', fontSize: '0.82rem' }}>
+                                    No deployed tokens yet.
+                                </div>
+                            )}
+
+                            {!isLoadingTokens && !tokensError && deployedTokens.length > 0 && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                    {deployedTokens.map((token) => (
+                                        <div
+                                            key={token.id}
+                                            style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'space-between',
+                                                gap: 12,
+                                                padding: '12px',
+                                                background: '#13131f',
+                                                border: '1px solid #1e1e30',
+                                            }}
+                                        >
+                                            <div style={{ minWidth: 0 }}>
+                                                <div className="font-mono" style={{ color: '#e2e8f0', fontSize: '0.95rem', textTransform: 'uppercase', marginBottom: 4 }}>
+                                                    {token.ticker}
+                                                </div>
+                                                <div className="font-mono" style={{ color: '#94a3b8', fontSize: '0.78rem', marginBottom: 2 }}>
+                                                    {token.description || 'No description'}
+                                                </div>
+                                                <div className="font-mono" style={{ color: '#64748b', fontSize: '0.72rem', marginBottom: 2 }}>
+                                                    {shortenAddress(token.token_address)}
+                                                </div>
+                                                <div className="font-mono" style={{ color: '#475569', fontSize: '0.7rem' }}>
+                                                    {formatDateTime(token.created_at)}
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+                                                <button
+                                                    onClick={() => router.push(`/token/${token.token_address}`)}
+                                                    className="font-mono"
+                                                    style={{
+                                                        padding: '8px 12px',
+                                                        fontSize: '0.72rem',
+                                                        background: '#7c3aed',
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        cursor: 'pointer',
+                                                        textTransform: 'uppercase',
+                                                        letterSpacing: '0.05em',
+                                                    }}
+                                                >
+                                                    Open
+                                                </button>
+                                                {token.deployment_tx && (
+                                                    <a
+                                                        href={`https://solscan.io/tx/${token.deployment_tx}?cluster=devnet`}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="font-mono"
+                                                        style={{ color: '#06d6a0', fontSize: '0.7rem', textAlign: 'center', textDecoration: 'none' }}
+                                                    >
+                                                        Tx
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 ) : (
                     <div style={{

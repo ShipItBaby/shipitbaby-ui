@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -42,6 +42,7 @@ export default function TokenPage() {
     const [isLaunching, setIsLaunching] = useState(false);
     const [launchError, setLaunchError] = useState(null);
     const [launchSuccess, setLaunchSuccess] = useState(null);
+    const launchInFlightRef = useRef(false);
 
     const getWalletProvider = useCallback(() => {
         if (walletType === 'phantom') return window?.solana;
@@ -146,9 +147,12 @@ export default function TokenPage() {
 
     async function handleLaunch(event) {
         event.preventDefault();
+        if (launchInFlightRef.current || isLaunching) return;
+        launchInFlightRef.current = true;
 
         if (!launchConfig?.idl || !launchConfig?.contractAddress) {
             setLaunchError('Launch config not loaded');
+            launchInFlightRef.current = false;
             return;
         }
 
@@ -159,6 +163,7 @@ export default function TokenPage() {
         try {
             const walletProvider = getWalletProvider();
             if (!walletProvider) throw new Error('Wallet not connected');
+            await ensureWalletSession(walletProvider, walletAddress);
 
             const connection = new Connection(DEVNET_RPC, 'confirmed');
             const provider = new AnchorProvider(
@@ -200,12 +205,30 @@ export default function TokenPage() {
                 .signers([tokenMint])
                 .rpc();
 
+            const tokenAddress = tokenMint.publicKey.toBase58();
+            const syncRes = await fetch('/api/tokens', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    token_address: tokenAddress,
+                    ticker: launchForm.symbol,
+                    description: launchForm.name,
+                    metadata_link: launchForm.uri,
+                    deployment_tx: tx,
+                }),
+            });
+            if (!syncRes.ok) {
+                const syncData = await syncRes.json().catch(() => ({}));
+                throw new Error(syncData.error || 'Token deployed, but failed to save launch in database');
+            }
+
             setLaunchSuccess(tx);
-            router.push(`/token/${tokenMint.publicKey.toBase58()}`);
+            router.push(`/token/${tokenAddress}`);
         } catch (err) {
             setLaunchError(err?.message || 'Launch failed');
         } finally {
             setIsLaunching(false);
+            launchInFlightRef.current = false;
         }
     }
 
