@@ -10,9 +10,11 @@ import {
     SYSVAR_RENT_PUBKEY,
 } from '@solana/web3.js';
 import { AnchorProvider, Program } from '@coral-xyz/anchor';
+import BetaSignupCard from '@/components/BetaSignupCard';
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
 import { PhantomIcon, SolflareIcon, GithubIcon } from '@/components/icons';
+import { isValidEmailInput, sanitizeEmailInput } from '@/lib/email';
 import {
     clearWalletSession,
     ensureWalletSession,
@@ -54,6 +56,9 @@ export default function Profile() {
     const [deployedTokens, setDeployedTokens] = useState([]);
     const [isLoadingTokens, setIsLoadingTokens] = useState(false);
     const [tokensError, setTokensError] = useState(null);
+    const [isBetaSignupSubmitting, setIsBetaSignupSubmitting] = useState(false);
+    const [betaSignupFeedback, setBetaSignupFeedback] = useState('');
+    const [betaSignupFeedbackTone, setBetaSignupFeedbackTone] = useState('muted');
     const launchInFlightRef = useRef(false);
 
     const getWalletProvider = useCallback(() => {
@@ -310,6 +315,65 @@ export default function Profile() {
         window.location.href = `/api/github/login?wallet=${walletAddress}`;
     }
 
+    async function handleBetaSignupSubmit(email) {
+        const sanitizedEmail = sanitizeEmailInput(email);
+        if (!isValidEmailInput(sanitizedEmail)) {
+            setBetaSignupFeedbackTone('error');
+            setBetaSignupFeedback('Enter a valid email address.');
+            return false;
+        }
+
+        setIsBetaSignupSubmitting(true);
+        setBetaSignupFeedback('');
+        setBetaSignupFeedbackTone('muted');
+
+        try {
+            if (walletAddress) {
+                const walletProvider = getWalletProvider();
+                if (!walletProvider) {
+                    setBetaSignupFeedbackTone('error');
+                    setBetaSignupFeedback('Wallet provider not available. Reconnect wallet and try again.');
+                    return false;
+                }
+
+                try {
+                    await ensureWalletSession(walletProvider, walletAddress);
+                } catch {
+                    setBetaSignupFeedbackTone('error');
+                    setBetaSignupFeedback('Wallet session verification failed. Please reconnect and try again.');
+                    return false;
+                }
+            }
+
+            const response = await fetch('/api/beta-signups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: sanitizedEmail }),
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                setBetaSignupFeedbackTone('error');
+                setBetaSignupFeedback(data.error || 'Could not submit email right now.');
+                return false;
+            }
+
+            setBetaSignupFeedbackTone('success');
+            setBetaSignupFeedback(
+                data.already_joined
+                    ? 'Already on the beta list.'
+                    : 'Joined beta. We will email you updates.'
+            );
+            return true;
+        } catch {
+            setBetaSignupFeedbackTone('error');
+            setBetaSignupFeedback('Could not submit email right now.');
+            return false;
+        } finally {
+            setIsBetaSignupSubmitting(false);
+        }
+    }
+
     return (
         <div className="grid-bg scanlines" style={{ minHeight: '100vh', position: 'relative', display: 'flex', flexDirection: 'column' }}>
             <Navbar />
@@ -343,7 +407,7 @@ export default function Profile() {
                 </div>
 
                 {walletAddress ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 'max-content' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 'max-content', width: '100%' }}>
                         {/* Wallet Identity Card */}
                         <div style={{
                             display: 'flex', alignItems: 'center', gap: 16,
@@ -373,197 +437,201 @@ export default function Profile() {
                             </div>
                         </div>
 
-                        {/* GitHub Identity Card */}
-                        <div style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 32,
-                            background: 'rgba(20,20,30,0.4)', border: '1px dashed #1e1e30',
-                            padding: '24px', borderRadius: '4px'
-                        }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                                <div style={{
-                                    width: 44, height: 44, borderRadius: '50%',
-                                    background: '#13131f', border: '1px solid #1e1e30',
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
-                                }}>
-                                    <GithubIcon width={22} height={22} color="#a78bfa" />
-                                </div>
-                                <div>
-                                    <div className="font-mono" style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
-                                        GitHub Identity
-                                    </div>
-                                    <div className="font-mono" style={{ fontSize: '1.2rem', color: githubUsername ? '#e2e8f0' : '#475569', letterSpacing: '0.02em' }}>
-                                        {githubUsername ? `@${githubUsername}` : 'Not Connected'}
-                                    </div>
-                                </div>
-                            </div>
-                            {!githubUsername ? (
-                                <button
-                                    onClick={handleConnectGithub}
-                                    disabled={isUpdating}
-                                    className="font-mono"
-                                    style={{
-                                        padding: '10px 20px', fontSize: '0.8rem', cursor: isUpdating ? 'not-allowed' : 'pointer',
-                                        background: '#7c3aed', color: '#fff', border: 'none',
-                                        textTransform: 'uppercase', letterSpacing: '0.05em',
-                                        opacity: isUpdating ? 0.7 : 1, transition: 'all 0.2s',
-                                        boxShadow: '2px 2px 0px rgba(0,0,0,0.5)'
-                                    }}
-                                    onMouseEnter={e => { if (!isUpdating) e.currentTarget.style.background = '#6d28d9'; }}
-                                    onMouseLeave={e => { if (!isUpdating) e.currentTarget.style.background = '#7c3aed'; }}
-                                >
-                                    {isUpdating ? 'Linking...' : 'Link GitHub'}
-                                </button>
-                            ) : (
-                                <button
-                                    onClick={handleUnlinkGithub}
-                                    disabled={isUnlinking}
-                                    className="font-mono"
-                                    style={{
-                                        padding: '10px 20px', fontSize: '0.8rem', cursor: isUnlinking ? 'not-allowed' : 'pointer',
-                                        background: 'transparent', color: '#ef4444', border: '1px solid #ef4444',
-                                        textTransform: 'uppercase', letterSpacing: '0.05em',
-                                        opacity: isUnlinking ? 0.7 : 1, transition: 'all 0.2s',
-                                    }}
-                                    onMouseEnter={e => { if (!isUnlinking) e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
-                                    onMouseLeave={e => { if (!isUnlinking) e.currentTarget.style.background = 'transparent'; }}
-                                >
-                                    {isUnlinking ? 'Unlinking...' : 'Unlink'}
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Launch App */}
-                        {isBeta ? (
-                            <button
-                                onClick={() => setShowLaunchModal(true)}
-                                className="font-mono"
-                                style={{
-                                    padding: '14px 28px', fontSize: '0.9rem', cursor: 'pointer',
-                                    background: '#06d6a0', color: '#0a0a0f', border: 'none',
-                                    textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700,
-                                    transition: 'all 0.2s', boxShadow: '4px 4px 0px rgba(0,0,0,0.4)',
-                                    alignSelf: 'flex-start',
-                                }}
-                                onMouseEnter={e => { e.currentTarget.style.background = '#05c490'; e.currentTarget.style.boxShadow = '4px 4px 0px rgba(6,214,160,0.3)'; }}
-                                onMouseLeave={e => { e.currentTarget.style.background = '#06d6a0'; e.currentTarget.style.boxShadow = '4px 4px 0px rgba(0,0,0,0.4)'; }}
-                            >
-                                🚀 Launch App
-                            </button>
-                        ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignSelf: 'flex-start' }}>
-                                <button
-                                    disabled
-                                    className="font-mono"
-                                    style={{
-                                        padding: '14px 28px', fontSize: '0.9rem', cursor: 'not-allowed',
-                                        background: 'rgba(6,214,160,0.1)', color: 'rgba(6,214,160,0.35)', border: '1px solid rgba(6,214,160,0.2)',
-                                        textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700,
-                                        boxShadow: 'none',
-                                    }}
-                                >
-                                    🚀 Launch App
-                                </button>
-                                <span className="font-mono" style={{ fontSize: '0.72rem', color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'center' }}>
-                                    Beta users only for now
-                                </span>
+                        {!isBeta && (
+                            <div style={{ width: '100%', maxWidth: 420 }}>
+                                <BetaSignupCard
+                                    onSubmit={handleBetaSignupSubmit}
+                                    isSubmitting={isBetaSignupSubmitting}
+                                    feedback={betaSignupFeedback}
+                                    feedbackTone={betaSignupFeedbackTone}
+                                />
                             </div>
                         )}
 
-                        <div style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 12,
-                            background: 'rgba(20,20,30,0.6)',
-                            border: '1px solid #1e1e30',
-                            padding: '20px',
-                            borderRadius: '4px',
-                            width: '100%',
-                        }}>
-                            <div className="font-mono" style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                Deployed Tokens
-                            </div>
-
-                            {isLoadingTokens && (
-                                <div className="font-mono" style={{ color: '#64748b', fontSize: '0.82rem' }}>
-                                    Loading tokens...
-                                </div>
-                            )}
-
-                            {!isLoadingTokens && tokensError && (
-                                <div className="font-mono" style={{ color: '#ef4444', fontSize: '0.82rem' }}>
-                                    {tokensError}
-                                </div>
-                            )}
-
-                            {!isLoadingTokens && !tokensError && deployedTokens.length === 0 && (
-                                <div className="font-mono" style={{ color: '#475569', fontSize: '0.82rem' }}>
-                                    No deployed tokens yet.
-                                </div>
-                            )}
-
-                            {!isLoadingTokens && !tokensError && deployedTokens.length > 0 && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                    {deployedTokens.map((token) => (
-                                        <div
-                                            key={token.id}
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                gap: 12,
-                                                padding: '12px',
-                                                background: '#13131f',
-                                                border: '1px solid #1e1e30',
-                                            }}
-                                        >
-                                            <div style={{ minWidth: 0 }}>
-                                                <div className="font-mono" style={{ color: '#e2e8f0', fontSize: '0.95rem', textTransform: 'uppercase', marginBottom: 4 }}>
-                                                    {token.ticker}
-                                                </div>
-                                                <div className="font-mono" style={{ color: '#94a3b8', fontSize: '0.78rem', marginBottom: 2 }}>
-                                                    {token.description || 'No description'}
-                                                </div>
-                                                <div className="font-mono" style={{ color: '#64748b', fontSize: '0.72rem', marginBottom: 2 }}>
-                                                    {shortenAddress(token.token_address)}
-                                                </div>
-                                                <div className="font-mono" style={{ color: '#475569', fontSize: '0.7rem' }}>
-                                                    {formatDateTime(token.created_at)}
-                                                </div>
+                        {isBeta && (
+                            <div style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 24,
+                                width: '100%',
+                                background: 'rgba(20,20,30,0.45)',
+                                border: '1px solid #1e1e30',
+                                padding: '20px',
+                                borderRadius: '4px',
+                            }}>
+                                {/* GitHub Identity Card */}
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 32,
+                                    background: 'rgba(20,20,30,0.4)', border: '1px dashed #1e1e30',
+                                    padding: '24px', borderRadius: '4px'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                                        <div style={{
+                                            width: 44, height: 44, borderRadius: '50%',
+                                            background: '#13131f', border: '1px solid #1e1e30',
+                                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                        }}>
+                                            <GithubIcon width={22} height={22} color="#a78bfa" />
+                                        </div>
+                                        <div>
+                                            <div className="font-mono" style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                                                GitHub Identity
                                             </div>
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
-                                                <button
-                                                    onClick={() => router.push(`/token/${token.token_address}`)}
-                                                    className="font-mono"
-                                                    style={{
-                                                        padding: '8px 12px',
-                                                        fontSize: '0.72rem',
-                                                        background: '#7c3aed',
-                                                        color: '#fff',
-                                                        border: 'none',
-                                                        cursor: 'pointer',
-                                                        textTransform: 'uppercase',
-                                                        letterSpacing: '0.05em',
-                                                    }}
-                                                >
-                                                    Open
-                                                </button>
-                                                {token.deployment_tx && (
-                                                    <a
-                                                        href={`https://solscan.io/tx/${token.deployment_tx}?cluster=devnet`}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        className="font-mono"
-                                                        style={{ color: '#06d6a0', fontSize: '0.7rem', textAlign: 'center', textDecoration: 'none' }}
-                                                    >
-                                                        Tx
-                                                    </a>
-                                                )}
+                                            <div className="font-mono" style={{ fontSize: '1.2rem', color: githubUsername ? '#e2e8f0' : '#475569', letterSpacing: '0.02em' }}>
+                                                {githubUsername ? `@${githubUsername}` : 'Not Connected'}
                                             </div>
                                         </div>
-                                    ))}
+                                    </div>
+                                    {!githubUsername ? (
+                                        <button
+                                            onClick={handleConnectGithub}
+                                            disabled={isUpdating}
+                                            className="font-mono"
+                                            style={{
+                                                padding: '10px 20px', fontSize: '0.8rem', cursor: isUpdating ? 'not-allowed' : 'pointer',
+                                                background: '#7c3aed', color: '#fff', border: 'none',
+                                                textTransform: 'uppercase', letterSpacing: '0.05em',
+                                                opacity: isUpdating ? 0.7 : 1, transition: 'all 0.2s',
+                                                boxShadow: '2px 2px 0px rgba(0,0,0,0.5)'
+                                            }}
+                                            onMouseEnter={e => { if (!isUpdating) e.currentTarget.style.background = '#6d28d9'; }}
+                                            onMouseLeave={e => { if (!isUpdating) e.currentTarget.style.background = '#7c3aed'; }}
+                                        >
+                                            {isUpdating ? 'Linking...' : 'Link GitHub'}
+                                        </button>
+                                    ) : (
+                                        <button
+                                            onClick={handleUnlinkGithub}
+                                            disabled={isUnlinking}
+                                            className="font-mono"
+                                            style={{
+                                                padding: '10px 20px', fontSize: '0.8rem', cursor: isUnlinking ? 'not-allowed' : 'pointer',
+                                                background: 'transparent', color: '#ef4444', border: '1px solid #ef4444',
+                                                textTransform: 'uppercase', letterSpacing: '0.05em',
+                                                opacity: isUnlinking ? 0.7 : 1, transition: 'all 0.2s',
+                                            }}
+                                            onMouseEnter={e => { if (!isUnlinking) e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
+                                            onMouseLeave={e => { if (!isUnlinking) e.currentTarget.style.background = 'transparent'; }}
+                                        >
+                                            {isUnlinking ? 'Unlinking...' : 'Unlink'}
+                                        </button>
+                                    )}
                                 </div>
-                            )}
-                        </div>
+
+                                {/* Launch App */}
+                                <button
+                                    onClick={() => setShowLaunchModal(true)}
+                                    className="font-mono"
+                                    style={{
+                                        padding: '14px 28px', fontSize: '0.9rem', cursor: 'pointer',
+                                        background: '#06d6a0', color: '#0a0a0f', border: 'none',
+                                        textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700,
+                                        transition: 'all 0.2s', boxShadow: '4px 4px 0px rgba(0,0,0,0.4)',
+                                        alignSelf: 'flex-start',
+                                    }}
+                                    onMouseEnter={e => { e.currentTarget.style.background = '#05c490'; e.currentTarget.style.boxShadow = '4px 4px 0px rgba(6,214,160,0.3)'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.background = '#06d6a0'; e.currentTarget.style.boxShadow = '4px 4px 0px rgba(0,0,0,0.4)'; }}
+                                >
+                                    🚀 Launch App
+                                </button>
+
+                                <div style={{
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 12,
+                                    background: 'rgba(20,20,30,0.6)',
+                                    border: '1px solid #1e1e30',
+                                    padding: '20px',
+                                    borderRadius: '4px',
+                                    width: '100%',
+                                }}>
+                                    <div className="font-mono" style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        Deployed Tokens
+                                    </div>
+
+                                    {isLoadingTokens && (
+                                        <div className="font-mono" style={{ color: '#64748b', fontSize: '0.82rem' }}>
+                                            Loading tokens...
+                                        </div>
+                                    )}
+
+                                    {!isLoadingTokens && tokensError && (
+                                        <div className="font-mono" style={{ color: '#ef4444', fontSize: '0.82rem' }}>
+                                            {tokensError}
+                                        </div>
+                                    )}
+
+                                    {!isLoadingTokens && !tokensError && deployedTokens.length === 0 && (
+                                        <div className="font-mono" style={{ color: '#475569', fontSize: '0.82rem' }}>
+                                            No deployed tokens yet.
+                                        </div>
+                                    )}
+
+                                    {!isLoadingTokens && !tokensError && deployedTokens.length > 0 && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                            {deployedTokens.map((token) => (
+                                                <div
+                                                    key={token.id}
+                                                    style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        gap: 12,
+                                                        padding: '12px',
+                                                        background: '#13131f',
+                                                        border: '1px solid #1e1e30',
+                                                    }}
+                                                >
+                                                    <div style={{ minWidth: 0 }}>
+                                                        <div className="font-mono" style={{ color: '#e2e8f0', fontSize: '0.95rem', textTransform: 'uppercase', marginBottom: 4 }}>
+                                                            {token.ticker}
+                                                        </div>
+                                                        <div className="font-mono" style={{ color: '#94a3b8', fontSize: '0.78rem', marginBottom: 2 }}>
+                                                            {token.description || 'No description'}
+                                                        </div>
+                                                        <div className="font-mono" style={{ color: '#64748b', fontSize: '0.72rem', marginBottom: 2 }}>
+                                                            {shortenAddress(token.token_address)}
+                                                        </div>
+                                                        <div className="font-mono" style={{ color: '#475569', fontSize: '0.7rem' }}>
+                                                            {formatDateTime(token.created_at)}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
+                                                        <button
+                                                            onClick={() => router.push(`/token/${token.token_address}`)}
+                                                            className="font-mono"
+                                                            style={{
+                                                                padding: '8px 12px',
+                                                                fontSize: '0.72rem',
+                                                                background: '#7c3aed',
+                                                                color: '#fff',
+                                                                border: 'none',
+                                                                cursor: 'pointer',
+                                                                textTransform: 'uppercase',
+                                                                letterSpacing: '0.05em',
+                                                            }}
+                                                        >
+                                                            Open
+                                                        </button>
+                                                        {token.deployment_tx && (
+                                                            <a
+                                                                href={`https://solscan.io/tx/${token.deployment_tx}?cluster=devnet`}
+                                                                target="_blank"
+                                                                rel="noreferrer"
+                                                                className="font-mono"
+                                                                style={{ color: '#06d6a0', fontSize: '0.7rem', textAlign: 'center', textDecoration: 'none' }}
+                                                            >
+                                                                Tx
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 ) : (
                     <div style={{

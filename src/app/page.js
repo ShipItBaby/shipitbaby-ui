@@ -1,7 +1,10 @@
 'use client';
 
+import BetaSignupCard from '@/components/BetaSignupCard';
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
+import { isValidEmailInput, sanitizeEmailInput } from '@/lib/email';
+import { ensureWalletSession } from '@/lib/walletAuthClient';
 import { useEffect, useState } from 'react';
 
 const STEPS = [
@@ -22,6 +25,9 @@ const FEATURES = [
 // ── Main Landing ─────────────────────────────────────────────────────────────
 export default function Home() {
     const [typed, setTyped] = useState('');
+    const [isBetaSignupSubmitting, setIsBetaSignupSubmitting] = useState(false);
+    const [betaSignupFeedback, setBetaSignupFeedback] = useState('');
+    const [betaSignupFeedbackTone, setBetaSignupFeedbackTone] = useState('muted');
     const fullText = 'Trade ideas. Not memes.';
 
     useEffect(() => {
@@ -32,6 +38,82 @@ export default function Home() {
         }, 25);
         return () => clearInterval(iv);
     }, []);
+
+    function getConnectedWalletContext() {
+        if (typeof window === 'undefined') return null;
+
+        const autoConnect = window.localStorage?.getItem('autoConnect');
+        if (autoConnect === 'phantom') {
+            const provider = window?.solana;
+            const walletAddress = provider?.publicKey?.toString();
+            if (provider?.isPhantom && walletAddress) {
+                return { provider, walletAddress };
+            }
+        }
+
+        if (autoConnect === 'solflare') {
+            const provider = window?.solflare;
+            const walletAddress = provider?.publicKey?.toString();
+            if (provider?.isSolflare && walletAddress) {
+                return { provider, walletAddress };
+            }
+        }
+
+        return null;
+    }
+
+    async function handleBetaSignupSubmit(email) {
+        const sanitizedEmail = sanitizeEmailInput(email);
+        if (!isValidEmailInput(sanitizedEmail)) {
+            setBetaSignupFeedbackTone('error');
+            setBetaSignupFeedback('Enter a valid email address.');
+            return false;
+        }
+
+        setIsBetaSignupSubmitting(true);
+        setBetaSignupFeedback('');
+        setBetaSignupFeedbackTone('muted');
+
+        try {
+            const connectedWallet = getConnectedWalletContext();
+            if (connectedWallet) {
+                try {
+                    await ensureWalletSession(connectedWallet.provider, connectedWallet.walletAddress);
+                } catch {
+                    setBetaSignupFeedbackTone('error');
+                    setBetaSignupFeedback('Wallet session verification failed. Please reconnect and try again.');
+                    return false;
+                }
+            }
+
+            const response = await fetch('/api/beta-signups', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: sanitizedEmail }),
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                setBetaSignupFeedbackTone('error');
+                setBetaSignupFeedback(data.error || 'Could not submit email right now.');
+                return false;
+            }
+
+            setBetaSignupFeedbackTone('success');
+            setBetaSignupFeedback(
+                data.already_joined
+                    ? 'Already on the beta list.'
+                    : 'Joined beta. We will email you updates.'
+            );
+            return true;
+        } catch {
+            setBetaSignupFeedbackTone('error');
+            setBetaSignupFeedback('Could not submit email right now.');
+            return false;
+        } finally {
+            setIsBetaSignupSubmitting(false);
+        }
+    }
 
     return (
         <div className="grid-bg scanlines" style={{ minHeight: '100vh', position: 'relative' }}>
@@ -76,15 +158,13 @@ export default function Home() {
                 </div>
 
                 {/* Right: Coming Soon */}
-                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-start' }}>
-                    <p className="font-pixel" style={{
-                        fontSize: 'clamp(3rem, 5.5vw, 5.5rem)',
-                        lineHeight: 1.05,
-                        color: '#e2e8f0',
-                        margin: 0,
-                    }}>
-                        Cooking...
-                    </p>
+                <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-start', width: '100%' }}>
+                    <BetaSignupCard
+                        onSubmit={handleBetaSignupSubmit}
+                        isSubmitting={isBetaSignupSubmitting}
+                        feedback={betaSignupFeedback}
+                        feedbackTone={betaSignupFeedbackTone}
+                    />
                     <p className="font-mono" style={{
                         marginTop: 20,
                         fontSize: '1rem',
