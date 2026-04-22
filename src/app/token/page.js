@@ -212,7 +212,7 @@ export default function TokenPage() {
                 body: JSON.stringify({
                     token_address: tokenAddress,
                     ticker: launchForm.symbol,
-                    description: launchForm.name,
+                    short_description: launchForm.name,
                     metadata_link: launchForm.uri,
                     deployment_tx: tx,
                 }),

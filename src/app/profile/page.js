@@ -161,7 +161,7 @@ export default function Profile() {
                 body: JSON.stringify({
                     token_address: tokenAddress,
                     ticker: launchForm.symbol,
-                    description: launchForm.name,
+                    short_description: launchForm.name,
                     metadata_link: launchForm.uri,
                     deployment_tx: tx,
                 }),
@@ -587,7 +587,7 @@ export default function Profile() {
                                                             {token.ticker}
                                                         </div>
                                                         <div className="font-mono" style={{ color: '#94a3b8', fontSize: '0.78rem', marginBottom: 2 }}>
-                                                            {token.description || 'No description'}
+                                                            {token.short_description || 'No description'}
                                                         </div>
                                                         <div className="font-mono" style={{ color: '#64748b', fontSize: '0.72rem', marginBottom: 2 }}>
                                                             {shortenAddress(token.token_address)}

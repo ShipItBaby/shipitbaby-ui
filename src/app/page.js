@@ -3,6 +3,8 @@
 import BetaSignupCard from '@/components/BetaSignupCard';
 import Footer from '@/components/Footer';
 import Navbar from '@/components/Navbar';
+import ProjectCard from '@/components/ProjectCard';
+import { XIcon } from '@/components/icons';
 import { isValidEmailInput, sanitizeEmailInput } from '@/lib/email';
 import { ensureWalletSession } from '@/lib/walletAuthClient';
 import { useEffect, useState } from 'react';
@@ -28,6 +30,9 @@ export default function Home() {
     const [isBetaSignupSubmitting, setIsBetaSignupSubmitting] = useState(false);
     const [betaSignupFeedback, setBetaSignupFeedback] = useState('');
     const [betaSignupFeedbackTone, setBetaSignupFeedbackTone] = useState('muted');
+    const [liveProjectRows, setLiveProjectRows] = useState([]);
+    const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+    const [projectsError, setProjectsError] = useState('');
     const fullText = 'Trade ideas. Not memes.';
 
     useEffect(() => {
@@ -37,6 +42,71 @@ export default function Home() {
             if (i >= fullText.length) clearInterval(iv);
         }, 25);
         return () => clearInterval(iv);
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function canCurrentUserViewNonLiveProjects() {
+            try {
+                const sessionResponse = await fetch('/api/auth/session', { method: 'GET' });
+                const sessionData = await sessionResponse.json().catch(() => ({}));
+
+                if (!sessionResponse.ok || sessionData?.authenticated !== true || !sessionData?.wallet) {
+                    return false;
+                }
+
+                const userResponse = await fetch(`/api/users?wallet=${encodeURIComponent(sessionData.wallet)}`);
+                const userData = await userResponse.json().catch(() => ({}));
+
+                if (!userResponse.ok) {
+                    return false;
+                }
+
+                return userData?.user?.is_beta === true;
+            } catch {
+                return false;
+            }
+        }
+
+        async function fetchLiveProjects() {
+            setIsLoadingProjects(true);
+            setProjectsError('');
+
+            try {
+                const canViewNonLiveProjects = await canCurrentUserViewNonLiveProjects();
+                const liveFilterValue = canViewNonLiveProjects ? 'false' : 'true';
+                const response = await fetch(`/api/projects?is_live=${liveFilterValue}&limit=9`);
+                const data = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to load projects');
+                }
+
+                if (cancelled) return;
+
+                const rows = Array.isArray(data.projects) ? data.projects : [];
+                setLiveProjectRows(
+                    canViewNonLiveProjects
+                        ? rows
+                        : rows.filter((row) => row?.project?.is_live === true)
+                );
+            } catch (error) {
+                if (cancelled) return;
+                setLiveProjectRows([]);
+                setProjectsError(error?.message || 'Failed to load projects');
+            } finally {
+                if (!cancelled) {
+                    setIsLoadingProjects(false);
+                }
+            }
+        }
+
+        fetchLiveProjects();
+
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
     function getConnectedWalletContext() {
@@ -129,8 +199,8 @@ export default function Home() {
                 <div>
                     <div style={{ marginBottom: 20 }}>
                         <span className="tag tag-green" style={{ marginBottom: 16, display: 'inline-flex' }}>
-                            <span className="pulse-dot" style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#d61e06' }} />
-                            &nbsp;SOON on Solana
+                            <span className="pulse-dot" style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#06d660ff' }} />
+                            &nbsp;Live on Solana Devnet
                         </span>
                     </div>
 
@@ -153,7 +223,7 @@ export default function Home() {
                     </p>
 
                     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                        
+
                     </div>
                 </div>
 
@@ -176,13 +246,60 @@ export default function Home() {
                             href="https://x.com/shipit_baby"
                             target="_blank"
                             rel="noopener noreferrer"
-                            style={{ color: '#a78bfa', textDecoration: 'none', borderBottom: '1px solid #7c3aed' }}
+                            aria-label="Follow ShipIt on X"
+                            style={{
+                                color: '#a78bfa',
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                verticalAlign: 'middle',
+                            }}
                         >
-                            X
+                            <XIcon size={20} />
                         </a>
                         {' '}for updates
                     </p>
                 </div>
+            </section>
+
+            {/* ── LIVE PROJECTS ── */}
+            <section style={{ maxWidth: 1100, margin: '0 auto', padding: '0 var(--section-px) 60px' }}>
+                <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                    <span className="font-mono" style={{ color: '#475569', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                        {'// LIVE PROJECTS'}
+                    </span>
+                </div>
+
+                {isLoadingProjects && (
+                    <div className="card" style={{ color: '#64748b', padding: 20 }}>
+                        Loading live projects...
+                    </div>
+                )}
+
+                {!isLoadingProjects && projectsError && (
+                    <div className="card" style={{ color: '#ef4444', padding: 20 }}>
+                        {projectsError}
+                    </div>
+                )}
+
+                {!isLoadingProjects && !projectsError && liveProjectRows.length === 0 && (
+                    <div className="card" style={{ color: '#64748b', padding: 20 }}>
+                        No live projects yet.
+                    </div>
+                )}
+
+                {!isLoadingProjects && !projectsError && liveProjectRows.length > 0 && (
+                    <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}>
+                        {liveProjectRows.map((row, index) => (
+                            <ProjectCard
+                                key={row?.project?.id || `project-${index}`}
+                                project={row.project}
+                                repo={row.repo}
+                                delay={index * 90}
+                            />
+                        ))}
+                    </div>
+                )}
             </section>
 
             {/* ── PIXEL SEPARATOR ── */}

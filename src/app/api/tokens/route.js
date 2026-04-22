@@ -26,7 +26,7 @@ async function handler(request) {
         return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
 
-    const { token_address, ticker, description, metadata_link, deployment_tx } = payload || {};
+    const { token_address, ticker, short_description, metadata_link, deployment_tx } = payload || {};
     if (!token_address || typeof token_address !== 'string') {
         return NextResponse.json({ error: 'token_address is required' }, { status: 400 });
     }
@@ -41,11 +41,11 @@ async function handler(request) {
         return NextResponse.json({ error: 'Invalid token address' }, { status: 400 });
     }
 
-    let normalizedDescription;
+    let normalizedShortDescription;
     let normalizedMetadataLink;
     let normalizedDeploymentTx;
     try {
-        normalizedDescription = normalizeOptionalText(description, 'description');
+        normalizedShortDescription = normalizeOptionalText(short_description, 'short_description');
         normalizedMetadataLink = normalizeOptionalText(metadata_link, 'metadata_link');
         normalizedDeploymentTx = normalizeOptionalText(deployment_tx, 'deployment_tx');
     } catch (err) {
@@ -67,7 +67,7 @@ async function handler(request) {
         deployer_id: user.id,
         token_address: normalizedTokenAddress,
         ticker: ticker.trim(),
-        description: normalizedDescription,
+        short_description: normalizedShortDescription,
         metadata_link: normalizedMetadataLink,
         deployment_tx: normalizedDeploymentTx,
         updated_at: now,
@@ -77,7 +77,7 @@ async function handler(request) {
     let alreadyExists = false;
 
     const { data: insertedToken, error: insertError } = await supabase
-        .from('tokens')
+        .from('projects')
         .insert(tokenInsertPayload)
         .select('*')
         .single();
@@ -85,7 +85,7 @@ async function handler(request) {
     if (insertError) {
         if (insertError.code === '23505') {
             const { data: existingToken, error: existingTokenError } = await supabase
-                .from('tokens')
+                .from('projects')
                 .select('*')
                 .eq('token_address', normalizedTokenAddress)
                 .single();
@@ -113,7 +113,7 @@ async function handler(request) {
     }
 
     const { count, error: countError } = await supabase
-        .from('tokens')
+        .from('projects')
         .select('id', { count: 'exact', head: true })
         .eq('deployer_id', user.id);
 
@@ -187,7 +187,7 @@ export async function GET(request) {
     }
 
     const { data: tokens, error: tokensError } = await supabase
-        .from('tokens')
+        .from('projects')
         .select('*')
         .eq('deployer_id', user.id)
         .order('created_at', { ascending: false });
