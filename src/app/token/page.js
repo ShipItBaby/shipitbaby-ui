@@ -38,7 +38,7 @@ export default function TokenPage() {
     const [accessError, setAccessError] = useState(null);
     const [launchConfig, setLaunchConfig] = useState(null);
 
-    const [launchForm, setLaunchForm] = useState({ name: '', symbol: '', uri: '' });
+    const [launchForm, setLaunchForm] = useState({ name: '', symbol: '', uri: '', logoUrl: '' });
     const [isLaunching, setIsLaunching] = useState(false);
     const [launchError, setLaunchError] = useState(null);
     const [launchSuccess, setLaunchSuccess] = useState(null);
@@ -214,6 +214,7 @@ export default function TokenPage() {
                     ticker: launchForm.symbol,
                     short_description: launchForm.name,
                     metadata_link: launchForm.uri,
+                    logo_url: launchForm.logoUrl,
                     deployment_tx: tx,
                 }),
             });
@@ -312,6 +313,15 @@ export default function TokenPage() {
                             placeholder="Metadata URI"
                             value={launchForm.uri}
                             onChange={e => setLaunchForm(prev => ({ ...prev, uri: e.target.value }))}
+                            className="font-mono"
+                            style={{ padding: '12px', background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0' }}
+                        />
+
+                        <input
+                            type="url"
+                            placeholder="Logo URL"
+                            value={launchForm.logoUrl}
+                            onChange={e => setLaunchForm(prev => ({ ...prev, logoUrl: e.target.value }))}
                             className="font-mono"
                             style={{ padding: '12px', background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0' }}
                         />

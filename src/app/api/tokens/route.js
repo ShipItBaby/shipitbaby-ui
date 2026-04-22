@@ -26,7 +26,14 @@ async function handler(request) {
         return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
 
-    const { token_address, ticker, short_description, metadata_link, deployment_tx } = payload || {};
+    const {
+        token_address,
+        ticker,
+        short_description,
+        metadata_link,
+        logo_url,
+        deployment_tx,
+    } = payload || {};
     if (!token_address || typeof token_address !== 'string') {
         return NextResponse.json({ error: 'token_address is required' }, { status: 400 });
     }
@@ -43,10 +50,12 @@ async function handler(request) {
 
     let normalizedShortDescription;
     let normalizedMetadataLink;
+    let normalizedLogoUrl;
     let normalizedDeploymentTx;
     try {
         normalizedShortDescription = normalizeOptionalText(short_description, 'short_description');
         normalizedMetadataLink = normalizeOptionalText(metadata_link, 'metadata_link');
+        normalizedLogoUrl = normalizeOptionalText(logo_url, 'logo_url');
         normalizedDeploymentTx = normalizeOptionalText(deployment_tx, 'deployment_tx');
     } catch (err) {
         return NextResponse.json({ error: err.message || 'Invalid payload' }, { status: 400 });
@@ -69,6 +78,7 @@ async function handler(request) {
         ticker: ticker.trim(),
         short_description: normalizedShortDescription,
         metadata_link: normalizedMetadataLink,
+        logo_url: normalizedLogoUrl,
         deployment_tx: normalizedDeploymentTx,
         updated_at: now,
     };

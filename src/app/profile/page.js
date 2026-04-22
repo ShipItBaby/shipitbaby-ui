@@ -49,7 +49,7 @@ export default function Profile() {
     const [isUpdating, setIsUpdating] = useState(false);
     const [isUnlinking, setIsUnlinking] = useState(false);
     const [showLaunchModal, setShowLaunchModal] = useState(false);
-    const [launchForm, setLaunchForm] = useState({ name: '', symbol: '', uri: '' });
+    const [launchForm, setLaunchForm] = useState({ name: '', symbol: '', uri: '', logoUrl: '' });
     const [isLaunching, setIsLaunching] = useState(false);
     const [launchError, setLaunchError] = useState(null);
     const [launchSuccess, setLaunchSuccess] = useState(null);
@@ -163,6 +163,7 @@ export default function Profile() {
                     ticker: launchForm.symbol,
                     short_description: launchForm.name,
                     metadata_link: launchForm.uri,
+                    logo_url: launchForm.logoUrl,
                     deployment_tx: tx,
                 }),
             });
@@ -173,6 +174,7 @@ export default function Profile() {
 
             setLaunchSuccess(tx);
             await fetchDeployedTokens(walletAddress);
+            router.push(`/project/${encodeURIComponent(tokenAddress)}`);
             console.log('Launch tx:', tx);
         } catch (err) {
             console.error('Launch error:', err);
@@ -758,6 +760,27 @@ export default function Profile() {
                                 <span className="font-mono" style={{ fontSize: '0.65rem', color: '#475569' }}>
                                     Link to JSON metadata (image, description, etc.)
                                 </span>
+                            </div>
+
+                            {/* Logo URL */}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <label className="font-mono" style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    Logo URL
+                                </label>
+                                <input
+                                    type="url"
+                                    value={launchForm.logoUrl}
+                                    onChange={e => setLaunchForm(prev => ({ ...prev, logoUrl: e.target.value }))}
+                                    placeholder="https://example.com/logo.png"
+                                    className="font-mono"
+                                    style={{
+                                        padding: '10px 14px', fontSize: '0.9rem',
+                                        background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0',
+                                        outline: 'none', transition: 'border-color 0.2s',
+                                    }}
+                                    onFocus={e => { e.currentTarget.style.borderColor = '#06d6a0'; }}
+                                    onBlur={e => { e.currentTarget.style.borderColor = '#1e1e30'; }}
+                                />
                             </div>
 
                             {/* Error */}

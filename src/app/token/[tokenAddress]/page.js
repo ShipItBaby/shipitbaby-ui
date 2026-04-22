@@ -298,6 +298,8 @@ export default function TokenDetailsPage() {
 
     const project = projectRow.project;
     const repo = projectRow.repo;
+    const projectLogoUrl = typeof project?.logo_url === 'string' ? project.logo_url.trim() : '';
+    const hasProjectLogo = projectLogoUrl.length > 0;
     const tokenTicker = typeof project?.ticker === 'string' && project.ticker.trim().length > 0
         ? project.ticker.trim().toUpperCase()
         : 'TOKEN';
@@ -1276,13 +1278,33 @@ export default function TokenDetailsPage() {
                                     >
 
                                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                                            <div style={{ minWidth: 0 }}>
-                                                <div className="font-pixel" style={{ fontSize: '2.1rem', color: '#e2e8f0', lineHeight: 1 }}>
-                                                    ${project.ticker || 'N/A'}
+                                            <div style={{ display: 'flex', gap: 14, minWidth: 0, flex: 1 }}>
+                                                <div
+                                                    style={{
+                                                        width: 84,
+                                                        height: 84,
+                                                        border: '1px solid #334155',
+                                                        background: '#0f0f1a',
+                                                        overflow: 'hidden',
+                                                        flexShrink: 0,
+                                                    }}
+                                                >
+                                                    {hasProjectLogo ? (
+                                                        <img
+                                                            src={projectLogoUrl}
+                                                            alt={`${project?.ticker || 'Project'} logo`}
+                                                            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                                                        />
+                                                    ) : null}
                                                 </div>
-                                                <p className="font-mono" style={{ color: '#94a3b8', fontSize: '0.92rem', marginTop: 8, lineHeight: 1.6 }}>
-                                                    {project.short_description || 'No project description yet.'}
-                                                </p>
+                                                <div style={{ minWidth: 0 }}>
+                                                    <div className="font-pixel" style={{ fontSize: '2.1rem', color: '#e2e8f0', lineHeight: 1 }}>
+                                                        ${project.ticker || 'N/A'}
+                                                    </div>
+                                                    <p className="font-mono" style={{ color: '#94a3b8', fontSize: '0.92rem', marginTop: 8, lineHeight: 1.6 }}>
+                                                        {project.short_description || 'No project description yet.'}
+                                                    </p>
+                                                </div>
                                             </div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                                 <span className={`tag ${projectStageTagClass}`}>
@@ -1318,9 +1340,6 @@ export default function TokenDetailsPage() {
                                                 ) : (
                                                     <span style={{ color: '#64748b' }}>—</span>
                                                 )}
-                                            </div>
-                                            <div className="font-mono" style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
-                                                {repoCommitsCount} commits
                                             </div>
                                         </div>
                                     </div>

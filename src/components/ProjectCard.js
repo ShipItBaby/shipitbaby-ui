@@ -18,19 +18,41 @@ export default function ProjectCard({ project, repo, delay = 0 }) {
     const stageClass = getStageTagClass(project?.stage);
     const commits = Number.isFinite(repo?.total_commits_count) ? repo.total_commits_count : 0;
     const tokenAddress = typeof project?.token_address === 'string' ? project.token_address : '';
+    const logoUrl = typeof project?.logo_url === 'string' ? project.logo_url.trim() : '';
+    const hasLogo = logoUrl.length > 0;
     const projectPath = tokenAddress ? `/project/${encodeURIComponent(tokenAddress)}` : null;
     const card = (
         <div className="card" style={{ animationDelay: `${delay}ms`, cursor: projectPath ? 'pointer' : 'default' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-                <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                        <span className="font-pixel" style={{ fontSize: '1.3rem', color: '#e2e8f0' }}>
-                            {project?.ticker || 'N/A'}
-                        </span>
+                <div style={{ display: 'flex', gap: 12, minWidth: 0 }}>
+                    <div
+                        style={{
+                            width: 54,
+                            height: 54,
+                            border: '1px solid #1e1e30',
+                            background: '#0f0f1a',
+                            flexShrink: 0,
+                            overflow: 'hidden',
+                        }}
+                    >
+                        {hasLogo ? (
+                            <img
+                                src={logoUrl}
+                                alt={`${project?.ticker || 'Project'} logo`}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                            />
+                        ) : null}
                     </div>
-                    <p style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                        {project?.short_description || 'No description'}
-                    </p>
+                    <div style={{ minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <span className="font-pixel" style={{ fontSize: '1.3rem', color: '#e2e8f0' }}>
+                                {project?.ticker || 'N/A'}
+                            </span>
+                        </div>
+                        <p style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                            {project?.short_description || 'No description'}
+                        </p>
+                    </div>
                 </div>
                 <span className={`tag ${stageClass}`}>{project?.stage || 'unknown'}</span>
             </div>
