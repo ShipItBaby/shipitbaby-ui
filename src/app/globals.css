@@ -323,6 +323,28 @@ body {
   align-items: center;
 }
 
+.project-view-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+}
+
+.project-left-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.project-right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 96px;
+}
+
 /* Footer inner row */
 .footer-inner {
   display: flex;
@@ -386,6 +408,14 @@ body {
   .community-grid {
     grid-template-columns: 1fr;
     gap: 32px;
+  }
+
+  .project-view-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .project-right-column {
+    position: static;
   }
 
   .footer-inner {
