@@ -3,6 +3,7 @@ import { PublicKey } from '@solana/web3.js';
 import { supabase } from '@/lib/supabase';
 import { withBeta } from '@/lib/withBeta';
 import { getSessionWalletFromRequest } from '@/lib/authSession';
+import { normalizeProjectCategory, PROJECT_CATEGORIES } from '@/lib/projectCategories';
 
 function normalizeOptionalText(value, fieldName) {
     if (value === undefined || value === null) return null;
@@ -29,6 +30,7 @@ async function handler(request) {
     const {
         token_address,
         ticker,
+        category,
         short_description,
         metadata_link,
         logo_url,
@@ -39,6 +41,14 @@ async function handler(request) {
     }
     if (!ticker || typeof ticker !== 'string' || ticker.trim().length === 0) {
         return NextResponse.json({ error: 'ticker is required' }, { status: 400 });
+    }
+    const hasCategoryInput = typeof category === 'string' && category.trim().length > 0;
+    const normalizedCategory = hasCategoryInput ? normalizeProjectCategory(category) : null;
+    if (hasCategoryInput && !normalizedCategory) {
+        return NextResponse.json(
+            { error: `category must be one of: ${PROJECT_CATEGORIES.join(', ')}` },
+            { status: 400 }
+        );
     }
 
     let normalizedTokenAddress;
@@ -76,6 +86,8 @@ async function handler(request) {
         deployer_id: user.id,
         token_address: normalizedTokenAddress,
         ticker: ticker.trim(),
+        category: normalizedCategory,
+        stage: 'IDEA',
         short_description: normalizedShortDescription,
         metadata_link: normalizedMetadataLink,
         logo_url: normalizedLogoUrl,

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getProjectCategoryTagStyle } from '@/lib/projectCategories';
 
 function getStageTagClass(stage) {
     const normalizedStage = (stage || '').toLowerCase();
@@ -20,6 +21,9 @@ export default function ProjectCard({ project, repo, delay = 0 }) {
     const tokenAddress = typeof project?.token_address === 'string' ? project.token_address : '';
     const logoUrl = typeof project?.logo_url === 'string' ? project.logo_url.trim() : '';
     const hasLogo = logoUrl.length > 0;
+    const tickerValue = typeof project?.ticker === 'string' ? project.ticker.trim() : '';
+    const displayTicker = tickerValue ? (tickerValue.startsWith('$') ? tickerValue : `$${tickerValue}`) : 'N/A';
+    const categoryTagStyle = getProjectCategoryTagStyle(project?.category);
     const projectPath = tokenAddress ? `/project/${encodeURIComponent(tokenAddress)}` : null;
     const card = (
         <div className="card" style={{ animationDelay: `${delay}ms`, cursor: projectPath ? 'pointer' : 'default' }}>
@@ -45,8 +49,8 @@ export default function ProjectCard({ project, repo, delay = 0 }) {
                     </div>
                     <div style={{ minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                            <span className="font-pixel" style={{ fontSize: '1.3rem', color: '#e2e8f0' }}>
-                                {project?.ticker || 'N/A'}
+                            <span className="font-pixel" style={{ fontSize: '1.3rem', color: '#22c55e' }}>
+                                {displayTicker}
                             </span>
                         </div>
                         <p style={{ fontSize: '0.72rem', color: '#64748b' }}>
@@ -58,7 +62,7 @@ export default function ProjectCard({ project, repo, delay = 0 }) {
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-                <span className="tag tag-purple" style={{ fontSize: '0.62rem' }}>
+                <span className="tag" style={{ fontSize: '0.62rem', ...categoryTagStyle }}>
                     {project?.category || 'uncategorized'}
                 </span>
                 <span className="tag" style={{ fontSize: '0.62rem', color: '#475569', borderColor: '#1e1e30' }}>

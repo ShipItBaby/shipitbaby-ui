@@ -18,6 +18,7 @@ import {
     SENTIMENT_OPTIONS,
     toSentimentCounts,
 } from '@/lib/projectSentiment';
+import { getProjectCategoryTagStyle } from '@/lib/projectCategories';
 
 const DEVNET_RPC = 'https://api.devnet.solana.com';
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
@@ -308,6 +309,10 @@ export default function TokenDetailsPage() {
         () => getStageTagClass(project?.stage),
         [project?.stage]
     );
+    const projectCategoryTagStyle = useMemo(
+        () => getProjectCategoryTagStyle(project?.category),
+        [project?.category]
+    );
 
     const repoCommitsCount = Number.isFinite(repo?.total_commits_count)
         ? repo.total_commits_count
@@ -375,6 +380,7 @@ export default function TokenDetailsPage() {
         builderClaimStatus,
         isClaimingBuilderFees,
     ]);
+    const showBuilderFeesPanel = builderClaimOverview.canWalletClaim;
 
     useEffect(() => {
         setProjectStatus('idle');
@@ -1317,7 +1323,7 @@ export default function TokenDetailsPage() {
                                         </div>
 
                                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                            <span className="tag tag-purple">{project.category || 'uncategorized'}</span>
+                                            <span className="tag" style={projectCategoryTagStyle}>{project.category || 'uncategorized'}</span>
                                             <span className="tag" style={{ color: '#94a3b8', borderColor: '#334155' }}>
                                                 {formatLaunchType(project.launch_type)}
                                             </span>
@@ -1389,7 +1395,7 @@ export default function TokenDetailsPage() {
                         <aside className="project-right-column">
                             <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14, padding: 24 }}>
                                 <p className="font-mono" style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                    Token Details
+                                    About
                                 </p>
                                 <div className="font-mono" style={{ display: 'grid', gap: 8, fontSize: '0.82rem', color: '#94a3b8' }}>
                                     <div style={{ wordBreak: 'break-all' }}>
@@ -1643,74 +1649,70 @@ export default function TokenDetailsPage() {
                                 </button>
                             </form>
 
-                            <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 24 }}>
-                                <p className="font-mono" style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                                    Builder Fees
-                                </p>
-
-                                {builderClaimStatus === 'loading' && (
-                                    <p className="font-mono" style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                                        Loading builder fee state...
+                            {showBuilderFeesPanel && (
+                                <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 24 }}>
+                                    <p className="font-mono" style={{ fontSize: '0.8rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                                        Builder Fees
                                     </p>
-                                )}
 
-                                {builderClaimStatus === 'error' && builderClaimError && (
-                                    <p className="font-mono" style={{ fontSize: '0.85rem', color: '#ef4444' }}>
-                                        {builderClaimError}
-                                    </p>
-                                )}
+                                    {builderClaimStatus === 'loading' && (
+                                        <p className="font-mono" style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                                            Loading builder fee state...
+                                        </p>
+                                    )}
 
-                                {builderClaimStatus === 'ready' && (
-                                    <>
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
-                                            <div style={{ border: '1px solid rgba(6,214,160,0.45)', background: 'rgba(6,214,160,0.08)', padding: '14px 14px' }}>
-                                                <div className="font-mono" style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
-                                                    Available To Claim
+                                    {builderClaimStatus === 'error' && builderClaimError && (
+                                        <p className="font-mono" style={{ fontSize: '0.85rem', color: '#ef4444' }}>
+                                            {builderClaimError}
+                                        </p>
+                                    )}
+
+                                    {builderClaimStatus === 'ready' && (
+                                        <>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+                                                <div style={{ border: '1px solid rgba(6,214,160,0.45)', background: 'rgba(6,214,160,0.08)', padding: '14px 14px' }}>
+                                                    <div className="font-mono" style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
+                                                        Available To Claim
+                                                    </div>
+                                                    <div className="font-pixel" style={{ fontSize: '2.2rem', color: '#06d6a0', lineHeight: 1 }}>
+                                                        {claimableBuilderFeesSol}
+                                                    </div>
                                                 </div>
-                                                <div className="font-pixel" style={{ fontSize: '2.2rem', color: '#06d6a0', lineHeight: 1 }}>
-                                                    {claimableBuilderFeesSol}
+                                                <div style={{ border: '1px solid #334155', background: '#0f0f1a', padding: '14px 14px' }}>
+                                                    <div className="font-mono" style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
+                                                        All-Time Claimed
+                                                    </div>
+                                                    <div className="font-pixel" style={{ fontSize: '2.2rem', color: '#e2e8f0', lineHeight: 1 }}>
+                                                        {totalClaimedBuilderFeesSol}
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div style={{ border: '1px solid #334155', background: '#0f0f1a', padding: '14px 14px' }}>
-                                                <div className="font-mono" style={{ fontSize: '0.78rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
-                                                    All-Time Claimed
+
+                                            <button
+                                                type="button"
+                                                disabled={!canClaimBuilderFees}
+                                                onClick={handleClaimBuilderFees}
+                                                className="btn-pixel btn-pixel-secondary"
+                                                style={{
+                                                    width: '100%',
+                                                    justifyContent: 'center',
+                                                    fontSize: '0.9rem',
+                                                    opacity: canClaimBuilderFees ? 1 : 0.55,
+                                                    cursor: canClaimBuilderFees ? 'pointer' : 'not-allowed',
+                                                }}
+                                            >
+                                                {isClaimingBuilderFees ? 'Claiming...' : 'Claim Builder Fees'}
+                                            </button>
+
+                                            {builderClaimTx && (
+                                                <div className="font-mono" style={{ color: '#06d6a0', fontSize: '0.8rem', wordBreak: 'break-all' }}>
+                                                    Builder claim tx: {builderClaimTx}
                                                 </div>
-                                                <div className="font-pixel" style={{ fontSize: '2.2rem', color: '#e2e8f0', lineHeight: 1 }}>
-                                                    {totalClaimedBuilderFeesSol}
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {!builderClaimOverview.canWalletClaim && (
-                                            <p className="font-mono" style={{ fontSize: '0.82rem', color: '#f59e0b' }}>
-                                                Connect the builder wallet to claim fees.
-                                            </p>
-                                        )}
-
-                                        <button
-                                            type="button"
-                                            disabled={!canClaimBuilderFees}
-                                            onClick={handleClaimBuilderFees}
-                                            className="btn-pixel btn-pixel-secondary"
-                                            style={{
-                                                width: '100%',
-                                                justifyContent: 'center',
-                                                fontSize: '0.9rem',
-                                                opacity: canClaimBuilderFees ? 1 : 0.55,
-                                                cursor: canClaimBuilderFees ? 'pointer' : 'not-allowed',
-                                            }}
-                                        >
-                                            {isClaimingBuilderFees ? 'Claiming...' : 'Claim Builder Fees'}
-                                        </button>
-
-                                        {builderClaimTx && (
-                                            <div className="font-mono" style={{ color: '#06d6a0', fontSize: '0.8rem', wordBreak: 'break-all' }}>
-                                                Builder claim tx: {builderClaimTx}
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                            </div>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            )}
                         </aside>
                     </div>
                 )}

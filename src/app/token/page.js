@@ -14,6 +14,7 @@ import { AnchorProvider, Program } from '@coral-xyz/anchor';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { ensureWalletSession } from '@/lib/walletAuthClient';
+import { PROJECT_CATEGORY_OPTIONS } from '@/lib/projectCategories';
 
 const DEVNET_RPC = 'https://api.devnet.solana.com';
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
@@ -38,7 +39,7 @@ export default function TokenPage() {
     const [accessError, setAccessError] = useState(null);
     const [launchConfig, setLaunchConfig] = useState(null);
 
-    const [launchForm, setLaunchForm] = useState({ name: '', symbol: '', uri: '', logoUrl: '' });
+    const [launchForm, setLaunchForm] = useState({ name: '', symbol: '', category: '', uri: '', logoUrl: '' });
     const [isLaunching, setIsLaunching] = useState(false);
     const [launchError, setLaunchError] = useState(null);
     const [launchSuccess, setLaunchSuccess] = useState(null);
@@ -212,6 +213,7 @@ export default function TokenPage() {
                 body: JSON.stringify({
                     token_address: tokenAddress,
                     ticker: launchForm.symbol,
+                    category: launchForm.category,
                     short_description: launchForm.name,
                     metadata_link: launchForm.uri,
                     logo_url: launchForm.logoUrl,
@@ -306,6 +308,21 @@ export default function TokenPage() {
                             className="font-mono"
                             style={{ padding: '12px', background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0', textTransform: 'uppercase' }}
                         />
+
+                        <select
+                            required
+                            value={launchForm.category}
+                            onChange={e => setLaunchForm(prev => ({ ...prev, category: e.target.value }))}
+                            className="font-mono"
+                            style={{ padding: '12px', background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0' }}
+                        >
+                            <option value="" disabled>Select Category</option>
+                            {PROJECT_CATEGORY_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </select>
 
                         <input
                             required

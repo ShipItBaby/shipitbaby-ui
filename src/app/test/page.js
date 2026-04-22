@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import Footer from '@/components/Footer';
 import { useEffect, useRef, useState } from 'react';
+import { getProjectCategoryTagStyle } from '@/lib/projectCategories';
 
 // ── Fake token data for demo cards ──────────────────────────────────────────
 const TOKENS = [
@@ -10,7 +11,7 @@ const TOKENS = [
         name: 'DevDash',
         ticker: '$DASH',
         pitch: 'AI dashboard for devs',
-        category: 'devtool',
+        category: 'Dev Tools',
         stage: 'SHIPPING',
         stageColor: 'tag-green',
         change: '+284%',
@@ -23,7 +24,7 @@ const TOKENS = [
         name: 'SolBot',
         ticker: '$SBOT',
         pitch: 'Automated Solana trading',
-        category: 'trading bot',
+        category: 'Trading',
         stage: 'PROOF',
         stageColor: 'tag-yellow',
         change: '+91%',
@@ -36,7 +37,7 @@ const TOKENS = [
         name: 'MemeKit',
         ticker: '$MKIT',
         pitch: 'Meme generator on-chain',
-        category: 'meme app',
+        category: 'Fun',
         stage: 'IDEA',
         stageColor: 'tag-purple',
         change: '-12%',
@@ -103,6 +104,7 @@ function MiniChart({ bars, up }) {
 
 // ── Token Card ───────────────────────────────────────────────────────────────
 function TokenCard({ token, delay = 0 }) {
+    const categoryTagStyle = getProjectCategoryTagStyle(token?.category);
     return (
         <div
             className="card"
@@ -128,7 +130,7 @@ function TokenCard({ token, delay = 0 }) {
             {/* Footer */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div style={{ display: 'flex', gap: 8 }}>
-                    <span className="tag tag-purple" style={{ fontSize: '0.62rem' }}>{token.category}</span>
+                    <span className="tag" style={{ fontSize: '0.62rem', ...categoryTagStyle }}>{token.category}</span>
                     <span className="tag" style={{ fontSize: '0.62rem', color: '#475569', borderColor: '#1e1e30' }}>
                         ⏱ {token.challenge}
                     </span>

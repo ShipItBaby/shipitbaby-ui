@@ -130,7 +130,7 @@ export default function FAQ() {
                             </div>
                             <div style={{ padding: '16px 18px', border: '1px solid #a78bfa22', background: '#0a0a0f' }}>
                                 <div className="font-pixel" style={{ fontSize: '1.3rem', color: '#a78bfa', marginBottom: 10 }}>∞ Open Launches</div>
-                                <p style={{ fontSize: '1.15rem', color: '#94a3b8', lineHeight: 1.65 }}>No strict deadline. For projects iterating openly — SaaS, AI tools, consumer apps, devtools.</p>
+                                <p style={{ fontSize: '1.15rem', color: '#94a3b8', lineHeight: 1.65 }}>No strict deadline. For projects iterating openly — SaaS, AI tools, lifestyle apps, devtools.</p>
                             </div>
                         </div>
                     </FAQItem>
