@@ -293,6 +293,13 @@ export default function TokenDetailsPage() {
     const [newCommentBody, setNewCommentBody] = useState('');
     const [commentPostStatus, setCommentPostStatus] = useState('idle');
     const [commentPostError, setCommentPostError] = useState(null);
+    const [projectUpdates, setProjectUpdates] = useState([]);
+    const [projectUpdatesStatus, setProjectUpdatesStatus] = useState('idle');
+    const [projectUpdatesError, setProjectUpdatesError] = useState(null);
+    const [canPostProjectUpdates, setCanPostProjectUpdates] = useState(false);
+    const [newUpdateBody, setNewUpdateBody] = useState('');
+    const [updatePostStatus, setUpdatePostStatus] = useState('idle');
+    const [updatePostError, setUpdatePostError] = useState(null);
 
     const [swapForm, setSwapForm] = useState({
         side: 'buy',
@@ -362,9 +369,11 @@ export default function TokenDetailsPage() {
         () => PROJECT_ACTIVITY_TABS.map((tab) => (
             tab.key === 'comments'
                 ? { ...tab, count: projectComments.length }
-                : tab
+                : tab.key === 'dev-updates'
+                    ? { ...tab, count: projectUpdates.length }
+                    : tab
         )),
-        [projectComments.length]
+        [projectComments.length, projectUpdates.length]
     );
     const activeProjectActivityTabLabel = useMemo(
         () => projectActivityTabs.find((tab) => tab.key === activeProjectActivityTab)?.label || '',
@@ -378,6 +387,15 @@ export default function TokenDetailsPage() {
     const hasPostableComment = useMemo(
         () => getProjectCommentLength(normalizeProjectCommentBody(newCommentBody)) > 0,
         [newCommentBody]
+    );
+    const newUpdateLength = useMemo(
+        () => getProjectCommentLength(newUpdateBody),
+        [newUpdateBody]
+    );
+    const remainingUpdateChars = PROJECT_COMMENT_MAX_CHARS - newUpdateLength;
+    const hasPostableUpdate = useMemo(
+        () => getProjectCommentLength(normalizeProjectCommentBody(newUpdateBody)) > 0,
+        [newUpdateBody]
     );
 
     const getWalletProvider = useCallback(() => {
@@ -452,6 +470,13 @@ export default function TokenDetailsPage() {
         setNewCommentBody('');
         setCommentPostStatus('idle');
         setCommentPostError(null);
+        setProjectUpdates([]);
+        setProjectUpdatesStatus('idle');
+        setProjectUpdatesError(null);
+        setCanPostProjectUpdates(false);
+        setNewUpdateBody('');
+        setUpdatePostStatus('idle');
+        setUpdatePostError(null);
         setTokenDecimals(null);
         setTokenMintStatus('idle');
         setTokenMintError(null);
@@ -751,6 +776,49 @@ export default function TokenDetailsPage() {
         }
 
         loadProjectComments();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [accessStatus, validTokenAddress]);
+
+    useEffect(() => {
+        if (!validTokenAddress || accessStatus !== 'granted') {
+            setProjectUpdates([]);
+            setProjectUpdatesStatus('idle');
+            setProjectUpdatesError(null);
+            setCanPostProjectUpdates(false);
+            return;
+        }
+
+        let cancelled = false;
+
+        async function loadProjectUpdates() {
+            setProjectUpdatesStatus('loading');
+            setProjectUpdatesError(null);
+
+            try {
+                const response = await fetch(`/api/projects/${encodeURIComponent(validTokenAddress)}/updates?limit=100`);
+                const data = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    throw new Error(data?.error || 'Failed to load project updates');
+                }
+
+                if (cancelled) return;
+
+                setProjectUpdates(Array.isArray(data?.updates) ? data.updates : []);
+                setCanPostProjectUpdates(Boolean(data?.can_post_updates));
+                setProjectUpdatesStatus('ready');
+            } catch (err) {
+                if (cancelled) return;
+                setProjectUpdatesStatus('error');
+                setProjectUpdatesError(err?.message || 'Failed to load project updates');
+                setCanPostProjectUpdates(false);
+            }
+        }
+
+        loadProjectUpdates();
 
         return () => {
             cancelled = true;
@@ -1358,6 +1426,79 @@ export default function TokenDetailsPage() {
         }
     }
 
+    function handleUpdateBodyChange(event) {
+        const sanitizedBody = sanitizeProjectCommentBody(event.target.value);
+        const limitedBody = trimProjectCommentToMaxChars(sanitizedBody, PROJECT_COMMENT_MAX_CHARS);
+        setNewUpdateBody(limitedBody);
+        setUpdatePostError(null);
+    }
+
+    async function handleUpdatePost(event) {
+        event.preventDefault();
+
+        if (!validTokenAddress) return;
+        if (!canPostProjectUpdates) return;
+        if (updatePostStatus === 'submitting') return;
+
+        const normalizedBody = normalizeProjectCommentBody(newUpdateBody);
+        const normalizedLength = getProjectCommentLength(normalizedBody);
+
+        if (normalizedLength === 0) {
+            setUpdatePostError('Update cannot be empty');
+            return;
+        }
+
+        if (normalizedLength > PROJECT_COMMENT_MAX_CHARS) {
+            setUpdatePostError(`Update must be at most ${PROJECT_COMMENT_MAX_CHARS} characters`);
+            return;
+        }
+
+        setUpdatePostStatus('submitting');
+        setUpdatePostError(null);
+
+        try {
+            const response = await fetch(`/api/projects/${encodeURIComponent(validTokenAddress)}/updates`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ body: normalizedBody }),
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (response.status === 401) {
+                setShowSentimentLoginPopup(true);
+                setUpdatePostStatus('idle');
+                return;
+            }
+
+            if (response.status === 403) {
+                setCanPostProjectUpdates(false);
+                setUpdatePostStatus('idle');
+                setUpdatePostError(data?.error || 'Only the project owner can post updates');
+                return;
+            }
+
+            if (!response.ok) {
+                throw new Error(data?.error || 'Failed to post project update');
+            }
+
+            const createdUpdate = data?.update || null;
+
+            if (createdUpdate?.id) {
+                setProjectUpdates((previous) => [
+                    createdUpdate,
+                    ...previous.filter((update) => update.id !== createdUpdate.id),
+                ]);
+            }
+
+            setProjectUpdatesStatus('ready');
+            setNewUpdateBody('');
+            setUpdatePostStatus('idle');
+        } catch (err) {
+            setUpdatePostStatus('idle');
+            setUpdatePostError(err?.message || 'Failed to post project update');
+        }
+    }
+
     const claimableBuilderFeesSol = useMemo(
         () => formatLamportsToSol(builderClaimOverview.claimableBuilderFees, 6),
         [builderClaimOverview.claimableBuilderFees]
@@ -1693,7 +1834,98 @@ export default function TokenDetailsPage() {
                                                     )}
                                                 </div>
                                             )}
-                                            {activeProjectActivityTab !== 'comments' && (
+                                            {activeProjectActivityTab === 'dev-updates' && (
+                                                <div style={{ padding: 14, display: 'grid', gap: 12 }}>
+                                                    {canPostProjectUpdates && (
+                                                        <form
+                                                            onSubmit={handleUpdatePost}
+                                                            style={{ display: 'grid', gap: 8, border: '1px solid #1e1e30', padding: 10, background: '#13131f' }}
+                                                        >
+                                                            <textarea
+                                                                value={newUpdateBody}
+                                                                onChange={handleUpdateBodyChange}
+                                                                maxLength={PROJECT_COMMENT_MAX_CHARS}
+                                                                placeholder="Share a dev update..."
+                                                                rows={3}
+                                                                className="font-mono"
+                                                                style={{
+                                                                    width: '100%',
+                                                                    resize: 'vertical',
+                                                                    minHeight: 82,
+                                                                    padding: 10,
+                                                                    border: '1px solid #334155',
+                                                                    background: '#0f0f1a',
+                                                                    color: '#e2e8f0',
+                                                                    fontSize: '0.92rem',
+                                                                    lineHeight: 1.6,
+                                                                }}
+                                                            />
+                                                            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                                                                <span className="font-mono" style={{ fontSize: '0.72rem', color: remainingUpdateChars < 20 ? '#f59e0b' : '#64748b' }}>
+                                                                    {remainingUpdateChars} chars left
+                                                                </span>
+                                                            </div>
+                                                            {updatePostError && (
+                                                                <p className="font-mono" style={{ margin: 0, fontSize: '0.74rem', color: '#ef4444' }}>
+                                                                    {updatePostError}
+                                                                </p>
+                                                            )}
+                                                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                                                <button
+                                                                    type="submit"
+                                                                    className="btn-pixel btn-pixel-secondary"
+                                                                    disabled={updatePostStatus === 'submitting' || !hasPostableUpdate}
+                                                                    style={{
+                                                                        opacity: updatePostStatus === 'submitting' || !hasPostableUpdate ? 0.6 : 1,
+                                                                        cursor: updatePostStatus === 'submitting' || !hasPostableUpdate ? 'not-allowed' : 'pointer',
+                                                                    }}
+                                                                >
+                                                                    {updatePostStatus === 'submitting' ? 'Posting...' : 'Post Update'}
+                                                                </button>
+                                                            </div>
+                                                        </form>
+                                                    )}
+
+                                                    {projectUpdatesStatus === 'loading' && (
+                                                        <p className="font-mono" style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>
+                                                            Loading updates...
+                                                        </p>
+                                                    )}
+                                                    {projectUpdatesStatus === 'error' && projectUpdatesError && (
+                                                        <p className="font-mono" style={{ margin: 0, fontSize: '0.78rem', color: '#ef4444' }}>
+                                                            {projectUpdatesError}
+                                                        </p>
+                                                    )}
+                                                    {canPostProjectUpdates && projectUpdatesStatus === 'ready' && projectUpdates.length === 0 && (
+                                                        <p className="font-mono" style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>
+                                                            No dev updates yet.
+                                                        </p>
+                                                    )}
+                                                    {projectUpdates.length > 0 && (
+                                                        <div style={{ display: 'grid', gap: 10 }}>
+                                                            {projectUpdates.map((update) => (
+                                                                <article key={update.id} style={{ border: '1px solid #1e1e30', background: '#13131f', padding: 10 }}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                                                                        <span className="font-mono" style={{ fontSize: '0.74rem', color: '#a78bfa' }}>
+                                                                            {formatCommentAuthor(update)}
+                                                                        </span>
+                                                                        <time className="font-mono" style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                                                                            {formatDateTime(update.created_at)}
+                                                                        </time>
+                                                                    </div>
+                                                                    <p
+                                                                        className="font-mono"
+                                                                        style={{ margin: '8px 0 0 0', fontSize: '0.92rem', color: '#cbd5e1', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                                                                    >
+                                                                        {update.body}
+                                                                    </p>
+                                                                </article>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {activeProjectActivityTab !== 'comments' && activeProjectActivityTab !== 'dev-updates' && (
                                                 <div className="font-mono" style={{ padding: 14, fontSize: '0.82rem', color: '#64748b' }}>
                                                     {activeProjectActivityTabLabel} feed is not available yet.
                                                 </div>
@@ -2063,7 +2295,7 @@ export default function TokenDetailsPage() {
                             Login Required
                         </p>
                         <p className="font-mono" style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.6 }}>
-                            Connect your wallet to post comments and vote on community sentiment.
+                            Connect your wallet to post comments, publish dev updates, and vote on community sentiment.
                         </p>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                             <Link
