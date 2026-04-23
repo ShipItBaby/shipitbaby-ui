@@ -300,6 +300,7 @@ export default function TokenDetailsPage() {
     const [newUpdateBody, setNewUpdateBody] = useState('');
     const [updatePostStatus, setUpdatePostStatus] = useState('idle');
     const [updatePostError, setUpdatePostError] = useState(null);
+    const [lastReadProjectUpdateAt, setLastReadProjectUpdateAt] = useState(null);
 
     const [swapForm, setSwapForm] = useState({
         side: 'buy',
@@ -365,15 +366,41 @@ export default function TokenDetailsPage() {
             isSelected: userSentiment === item.key,
         }))
     ), [sentimentCounts, userSentiment]);
+    const projectUpdatesReadStorageKey = useMemo(() => {
+        if (!walletAddress || !validTokenAddress) return null;
+        return `shipit:updates:lastRead:${walletAddress}:${validTokenAddress}`;
+    }, [validTokenAddress, walletAddress]);
+    const unreadProjectUpdatesCount = useMemo(() => {
+        if (!Array.isArray(projectUpdates) || projectUpdates.length === 0) return 0;
+
+        const lastReadTs = lastReadProjectUpdateAt ? Date.parse(lastReadProjectUpdateAt) : Number.NaN;
+
+        return projectUpdates.reduce((count, update) => {
+            const createdAt = typeof update?.created_at === 'string' ? update.created_at : '';
+            const updateTs = Date.parse(createdAt);
+            if (!Number.isFinite(updateTs)) return count;
+
+            const authorWallet = typeof update?.author_wallet === 'string'
+                ? update.author_wallet.trim()
+                : '';
+            if (walletAddress && authorWallet && authorWallet === walletAddress) return count;
+
+            if (!Number.isFinite(lastReadTs)) {
+                return count + 1;
+            }
+
+            return updateTs > lastReadTs ? count + 1 : count;
+        }, 0);
+    }, [lastReadProjectUpdateAt, projectUpdates, walletAddress]);
     const projectActivityTabs = useMemo(
         () => PROJECT_ACTIVITY_TABS.map((tab) => (
             tab.key === 'comments'
                 ? { ...tab, count: projectComments.length }
                 : tab.key === 'dev-updates'
-                    ? { ...tab, count: projectUpdates.length }
+                    ? { ...tab, count: projectUpdates.length, unreadCount: unreadProjectUpdatesCount }
                     : tab
         )),
-        [projectComments.length, projectUpdates.length]
+        [projectComments.length, projectUpdates.length, unreadProjectUpdatesCount]
     );
     const activeProjectActivityTabLabel = useMemo(
         () => projectActivityTabs.find((tab) => tab.key === activeProjectActivityTab)?.label || '',
@@ -477,6 +504,7 @@ export default function TokenDetailsPage() {
         setNewUpdateBody('');
         setUpdatePostStatus('idle');
         setUpdatePostError(null);
+        setLastReadProjectUpdateAt(null);
         setTokenDecimals(null);
         setTokenMintStatus('idle');
         setTokenMintError(null);
@@ -824,6 +852,55 @@ export default function TokenDetailsPage() {
             cancelled = true;
         };
     }, [accessStatus, validTokenAddress]);
+
+    useEffect(() => {
+        if (!projectUpdatesReadStorageKey) {
+            setLastReadProjectUpdateAt(null);
+            return;
+        }
+
+        try {
+            const stored = localStorage.getItem(projectUpdatesReadStorageKey);
+            if (!stored || !Number.isFinite(Date.parse(stored))) {
+                setLastReadProjectUpdateAt(null);
+                return;
+            }
+
+            setLastReadProjectUpdateAt(stored);
+        } catch {
+            setLastReadProjectUpdateAt(null);
+        }
+    }, [projectUpdatesReadStorageKey]);
+
+    useEffect(() => {
+        if (activeProjectActivityTab !== 'dev-updates') return;
+        if (projectUpdatesStatus !== 'ready') return;
+        if (!projectUpdatesReadStorageKey) return;
+        if (!Array.isArray(projectUpdates) || projectUpdates.length === 0) return;
+
+        const newestUpdate = projectUpdates[0];
+        const newestUpdateAt = typeof newestUpdate?.created_at === 'string'
+            ? newestUpdate.created_at
+            : '';
+        const newestTs = Date.parse(newestUpdateAt);
+        if (!Number.isFinite(newestTs)) return;
+
+        const lastReadTs = lastReadProjectUpdateAt ? Date.parse(lastReadProjectUpdateAt) : Number.NaN;
+        if (Number.isFinite(lastReadTs) && lastReadTs >= newestTs) return;
+
+        try {
+            localStorage.setItem(projectUpdatesReadStorageKey, newestUpdateAt);
+            setLastReadProjectUpdateAt(newestUpdateAt);
+        } catch {
+            // Best-effort only for v1 local storage unread state.
+        }
+    }, [
+        activeProjectActivityTab,
+        lastReadProjectUpdateAt,
+        projectUpdates,
+        projectUpdatesReadStorageKey,
+        projectUpdatesStatus,
+    ]);
 
     useEffect(() => {
         if (!validTokenAddress || accessStatus !== 'granted') return;
@@ -1704,6 +1781,9 @@ export default function TokenDetailsPage() {
                                         <div role="tablist" aria-label="Project activity tabs" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                             {projectActivityTabs.map((tab) => {
                                                 const isActive = activeProjectActivityTab === tab.key;
+                                                const hasUnreadDevUpdates = tab.key === 'dev-updates'
+                                                    && Number.isInteger(tab.unreadCount)
+                                                    && tab.unreadCount > 0;
                                                 return (
                                                     <button
                                                         key={tab.key}
@@ -1729,12 +1809,14 @@ export default function TokenDetailsPage() {
                                                         <span>{tab.label}</span>
                                                         <span
                                                             style={{
-                                                                fontSize: '0.64rem',
-                                                                color: isActive ? '#e2e8f0' : '#64748b',
+                                                                fontSize: hasUnreadDevUpdates ? '0.74rem' : '0.64rem',
+                                                                color: hasUnreadDevUpdates ? '#ef4444' : (isActive ? '#e2e8f0' : '#64748b'),
                                                                 lineHeight: 1,
                                                             }}
                                                         >
-                                                            {tab.count}
+                                                            {hasUnreadDevUpdates
+                                                                ? `${tab.unreadCount} new`
+                                                                : tab.count}
                                                         </span>
                                                     </button>
                                                 );
