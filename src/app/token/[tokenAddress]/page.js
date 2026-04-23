@@ -19,6 +19,13 @@ import {
     toSentimentCounts,
 } from '@/lib/projectSentiment';
 import { getProjectCategoryTagStyle } from '@/lib/projectCategories';
+import {
+    getProjectCommentLength,
+    normalizeProjectCommentBody,
+    PROJECT_COMMENT_MAX_CHARS,
+    sanitizeProjectCommentBody,
+    trimProjectCommentToMaxChars,
+} from '@/lib/projectComments';
 
 const DEVNET_RPC = 'https://api.devnet.solana.com';
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
@@ -40,6 +47,11 @@ const SLIPPAGE_OPTIONS = [
     { label: '1%', bps: 100 },
     { label: '2%', bps: 200 },
     { label: '5%', bps: 500 },
+];
+const PROJECT_ACTIVITY_TABS = [
+    { key: 'comments', label: 'Comments', count: 0 },
+    { key: 'commits', label: 'Commits', count: 0 },
+    { key: 'dev-updates', label: 'Dev Updates', count: 0 },
 ];
 
 const SHORT_ADDRESS_START = 4;
@@ -242,6 +254,20 @@ function formatStageLabel(stage) {
         .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function formatCommentAuthor(comment) {
+    const githubUsername = typeof comment?.author_github_username === 'string'
+        ? comment.author_github_username.trim()
+        : '';
+    if (githubUsername) return `@${githubUsername}`;
+
+    const wallet = typeof comment?.author_wallet === 'string'
+        ? comment.author_wallet.trim()
+        : '';
+    if (wallet) return shortenAddress(wallet);
+
+    return 'Unknown user';
+}
+
 export default function TokenDetailsPage() {
     const params = useParams();
     const tokenAddress = typeof params?.tokenAddress === 'string' ? params.tokenAddress : '';
@@ -260,6 +286,13 @@ export default function TokenDetailsPage() {
     const [sentimentVoteStatus, setSentimentVoteStatus] = useState('idle');
     const [sentimentVoteError, setSentimentVoteError] = useState(null);
     const [showSentimentLoginPopup, setShowSentimentLoginPopup] = useState(false);
+    const [activeProjectActivityTab, setActiveProjectActivityTab] = useState('comments');
+    const [projectComments, setProjectComments] = useState([]);
+    const [projectCommentsStatus, setProjectCommentsStatus] = useState('idle');
+    const [projectCommentsError, setProjectCommentsError] = useState(null);
+    const [newCommentBody, setNewCommentBody] = useState('');
+    const [commentPostStatus, setCommentPostStatus] = useState('idle');
+    const [commentPostError, setCommentPostError] = useState(null);
 
     const [swapForm, setSwapForm] = useState({
         side: 'buy',
@@ -325,6 +358,27 @@ export default function TokenDetailsPage() {
             isSelected: userSentiment === item.key,
         }))
     ), [sentimentCounts, userSentiment]);
+    const projectActivityTabs = useMemo(
+        () => PROJECT_ACTIVITY_TABS.map((tab) => (
+            tab.key === 'comments'
+                ? { ...tab, count: projectComments.length }
+                : tab
+        )),
+        [projectComments.length]
+    );
+    const activeProjectActivityTabLabel = useMemo(
+        () => projectActivityTabs.find((tab) => tab.key === activeProjectActivityTab)?.label || '',
+        [activeProjectActivityTab, projectActivityTabs]
+    );
+    const newCommentLength = useMemo(
+        () => getProjectCommentLength(newCommentBody),
+        [newCommentBody]
+    );
+    const remainingCommentChars = PROJECT_COMMENT_MAX_CHARS - newCommentLength;
+    const hasPostableComment = useMemo(
+        () => getProjectCommentLength(normalizeProjectCommentBody(newCommentBody)) > 0,
+        [newCommentBody]
+    );
 
     const getWalletProvider = useCallback(() => {
         if (walletType === 'phantom') return window?.solana;
@@ -391,6 +445,13 @@ export default function TokenDetailsPage() {
         setSentimentVoteStatus('idle');
         setSentimentVoteError(null);
         setShowSentimentLoginPopup(false);
+        setActiveProjectActivityTab('comments');
+        setProjectComments([]);
+        setProjectCommentsStatus('idle');
+        setProjectCommentsError(null);
+        setNewCommentBody('');
+        setCommentPostStatus('idle');
+        setCommentPostError(null);
         setTokenDecimals(null);
         setTokenMintStatus('idle');
         setTokenMintError(null);
@@ -650,6 +711,46 @@ export default function TokenDetailsPage() {
         }
 
         loadProjectDetails();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [accessStatus, validTokenAddress]);
+
+    useEffect(() => {
+        if (!validTokenAddress || accessStatus !== 'granted') {
+            setProjectComments([]);
+            setProjectCommentsStatus('idle');
+            setProjectCommentsError(null);
+            return;
+        }
+
+        let cancelled = false;
+
+        async function loadProjectComments() {
+            setProjectCommentsStatus('loading');
+            setProjectCommentsError(null);
+
+            try {
+                const response = await fetch(`/api/projects/${encodeURIComponent(validTokenAddress)}/comments?limit=100`);
+                const data = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    throw new Error(data?.error || 'Failed to load project comments');
+                }
+
+                if (cancelled) return;
+
+                setProjectComments(Array.isArray(data?.comments) ? data.comments : []);
+                setProjectCommentsStatus('ready');
+            } catch (err) {
+                if (cancelled) return;
+                setProjectCommentsStatus('error');
+                setProjectCommentsError(err?.message || 'Failed to load project comments');
+            }
+        }
+
+        loadProjectComments();
 
         return () => {
             cancelled = true;
@@ -1188,6 +1289,75 @@ export default function TokenDetailsPage() {
         }
     }
 
+    function handleCommentBodyChange(event) {
+        const sanitizedBody = sanitizeProjectCommentBody(event.target.value);
+        const limitedBody = trimProjectCommentToMaxChars(sanitizedBody, PROJECT_COMMENT_MAX_CHARS);
+        setNewCommentBody(limitedBody);
+        setCommentPostError(null);
+    }
+
+    async function handleCommentPost(event) {
+        event.preventDefault();
+
+        if (!validTokenAddress) return;
+        if (walletStatus !== 'connected') {
+            setShowSentimentLoginPopup(true);
+            return;
+        }
+        if (commentPostStatus === 'submitting') return;
+
+        const normalizedBody = normalizeProjectCommentBody(newCommentBody);
+        const normalizedLength = getProjectCommentLength(normalizedBody);
+
+        if (normalizedLength === 0) {
+            setCommentPostError('Comment cannot be empty');
+            return;
+        }
+
+        if (normalizedLength > PROJECT_COMMENT_MAX_CHARS) {
+            setCommentPostError(`Comment must be at most ${PROJECT_COMMENT_MAX_CHARS} characters`);
+            return;
+        }
+
+        setCommentPostStatus('submitting');
+        setCommentPostError(null);
+
+        try {
+            const response = await fetch(`/api/projects/${encodeURIComponent(validTokenAddress)}/comments`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ body: normalizedBody }),
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (response.status === 401) {
+                setShowSentimentLoginPopup(true);
+                setCommentPostStatus('idle');
+                return;
+            }
+
+            if (!response.ok) {
+                throw new Error(data?.error || 'Failed to post comment');
+            }
+
+            const createdComment = data?.comment || null;
+
+            if (createdComment?.id) {
+                setProjectComments((previous) => [
+                    createdComment,
+                    ...previous.filter((comment) => comment.id !== createdComment.id),
+                ]);
+            }
+
+            setProjectCommentsStatus('ready');
+            setNewCommentBody('');
+            setCommentPostStatus('idle');
+        } catch (err) {
+            setCommentPostStatus('idle');
+            setCommentPostError(err?.message || 'Failed to post comment');
+        }
+    }
+
     const claimableBuilderFeesSol = useMemo(
         () => formatLamportsToSol(builderClaimOverview.claimableBuilderFees, 6),
         [builderClaimOverview.claimableBuilderFees]
@@ -1388,6 +1558,148 @@ export default function TokenDetailsPage() {
                                             ))}
                                         </div>
                                     </div>
+
+                                    <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                        <div role="tablist" aria-label="Project activity tabs" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                            {projectActivityTabs.map((tab) => {
+                                                const isActive = activeProjectActivityTab === tab.key;
+                                                return (
+                                                    <button
+                                                        key={tab.key}
+                                                        type="button"
+                                                        role="tab"
+                                                        aria-selected={isActive}
+                                                        onClick={() => setActiveProjectActivityTab(tab.key)}
+                                                        style={{
+                                                            border: isActive ? '1px solid #a78bfa' : '1px solid #334155',
+                                                            background: '#0f0f1a',
+                                                            color: isActive ? '#a78bfa' : '#94a3b8',
+                                                            padding: '8px 12px',
+                                                            cursor: 'pointer',
+                                                            fontFamily: "'Share Tech Mono', monospace",
+                                                            fontSize: '0.76rem',
+                                                            textTransform: 'uppercase',
+                                                            letterSpacing: '0.05em',
+                                                            display: 'inline-flex',
+                                                            alignItems: 'center',
+                                                            gap: 6,
+                                                        }}
+                                                    >
+                                                        <span>{tab.label}</span>
+                                                        <span
+                                                            style={{
+                                                                fontSize: '0.64rem',
+                                                                color: isActive ? '#e2e8f0' : '#64748b',
+                                                                lineHeight: 1,
+                                                            }}
+                                                        >
+                                                            {tab.count}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <div
+                                            role="tabpanel"
+                                            aria-label={`${activeProjectActivityTabLabel} content`}
+                                            style={{ minHeight: 96, border: '1px solid #1e1e30', background: '#0f0f1a' }}
+                                        >
+                                            {activeProjectActivityTab === 'comments' && (
+                                                <div style={{ padding: 14, display: 'grid', gap: 12 }}>
+                                                    <form
+                                                        onSubmit={handleCommentPost}
+                                                        style={{ display: 'grid', gap: 8, border: '1px solid #1e1e30', padding: 10, background: '#13131f' }}
+                                                    >
+                                                        <textarea
+                                                            value={newCommentBody}
+                                                            onChange={handleCommentBodyChange}
+                                                            maxLength={PROJECT_COMMENT_MAX_CHARS}
+                                                            placeholder="Add a comment..."
+                                                            rows={3}
+                                                            className="font-mono"
+                                                            style={{
+                                                                width: '100%',
+                                                                resize: 'vertical',
+                                                                minHeight: 82,
+                                                                padding: 10,
+                                                                border: '1px solid #334155',
+                                                                background: '#0f0f1a',
+                                                                color: '#e2e8f0',
+                                                                fontSize: '0.92rem',
+                                                                lineHeight: 1.6,
+                                                            }}
+                                                        />
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                                                            <span className="font-mono" style={{ fontSize: '0.72rem', color: remainingCommentChars < 20 ? '#f59e0b' : '#64748b' }}>
+                                                                {remainingCommentChars} chars left
+                                                            </span>
+                                                        </div>
+                                                        {commentPostError && (
+                                                            <p className="font-mono" style={{ margin: 0, fontSize: '0.74rem', color: '#ef4444' }}>
+                                                                {commentPostError}
+                                                            </p>
+                                                        )}
+                                                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                                            <button
+                                                                type="submit"
+                                                                className="btn-pixel btn-pixel-secondary"
+                                                                disabled={walletStatus !== 'connected' || commentPostStatus === 'submitting' || !hasPostableComment}
+                                                                style={{
+                                                                    opacity: walletStatus !== 'connected' || commentPostStatus === 'submitting' || !hasPostableComment ? 0.6 : 1,
+                                                                    cursor: walletStatus !== 'connected' || commentPostStatus === 'submitting' || !hasPostableComment ? 'not-allowed' : 'pointer',
+                                                                }}
+                                                            >
+                                                                {commentPostStatus === 'submitting' ? 'Posting...' : 'Post Comment'}
+                                                            </button>
+                                                        </div>
+                                                    </form>
+
+                                                    {projectCommentsStatus === 'loading' && (
+                                                        <p className="font-mono" style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>
+                                                            Loading comments...
+                                                        </p>
+                                                    )}
+                                                    {projectCommentsStatus === 'error' && projectCommentsError && (
+                                                        <p className="font-mono" style={{ margin: 0, fontSize: '0.78rem', color: '#ef4444' }}>
+                                                            {projectCommentsError}
+                                                        </p>
+                                                    )}
+                                                    {projectCommentsStatus === 'ready' && projectComments.length === 0 && (
+                                                        <p className="font-mono" style={{ margin: 0, fontSize: '0.78rem', color: '#64748b' }}>
+                                                            No comments yet.
+                                                        </p>
+                                                    )}
+                                                    {projectComments.length > 0 && (
+                                                        <div style={{ display: 'grid', gap: 10 }}>
+                                                            {projectComments.map((comment) => (
+                                                                <article key={comment.id} style={{ border: '1px solid #1e1e30', background: '#13131f', padding: 10 }}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                                                                        <span className="font-mono" style={{ fontSize: '0.74rem', color: '#a78bfa' }}>
+                                                                            {formatCommentAuthor(comment)}
+                                                                        </span>
+                                                                        <time className="font-mono" style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                                                                            {formatDateTime(comment.created_at)}
+                                                                        </time>
+                                                                    </div>
+                                                                    <p
+                                                                        className="font-mono"
+                                                                        style={{ margin: '8px 0 0 0', fontSize: '0.92rem', color: '#cbd5e1', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                                                                    >
+                                                                        {comment.body}
+                                                                    </p>
+                                                                </article>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {activeProjectActivityTab !== 'comments' && (
+                                                <div className="font-mono" style={{ padding: 14, fontSize: '0.82rem', color: '#64748b' }}>
+                                                    {activeProjectActivityTabLabel} feed is not available yet.
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 </>
                             )}
                         </section>
@@ -1426,7 +1738,7 @@ export default function TokenDetailsPage() {
 
                             <form onSubmit={handleSwap} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: 24 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                                    <p className="font-mono" style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    <p className="font-mono" style={{ fontSize: '1rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                                         Swap
                                     </p>
                                     <label className="font-mono" style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -1751,7 +2063,7 @@ export default function TokenDetailsPage() {
                             Login Required
                         </p>
                         <p className="font-mono" style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8', lineHeight: 1.6 }}>
-                            Connect your wallet to vote on community sentiment.
+                            Connect your wallet to post comments and vote on community sentiment.
                         </p>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                             <Link
