@@ -200,7 +200,7 @@ export default function Home() {
                     <div style={{ marginBottom: 20 }}>
                         <span className="tag tag-green" style={{ marginBottom: 16, display: 'inline-flex' }}>
                             <span className="pulse-dot" style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#06d660ff' }} />
-                            &nbsp;Live on Solana Devnet
+                            &nbsp;Solana DEVNET
                         </span>
                     </div>
 

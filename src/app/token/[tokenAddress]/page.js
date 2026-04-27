@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { AnchorProvider, BN, Program } from '@coral-xyz/anchor';
+import { AnchorProvider, BN, EventParser, Program } from '@coral-xyz/anchor';
 import {
     Connection,
     PublicKey,
@@ -11,6 +11,7 @@ import {
 } from '@solana/web3.js';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import ProjectTradeChart from '@/components/ProjectTradeChart';
 import { ensureWalletSession } from '@/lib/walletAuthClient';
 import {
     createEmptySentimentCounts,
@@ -53,6 +54,7 @@ const PROJECT_ACTIVITY_TABS = [
     { key: 'commits', label: 'Commits', count: 0 },
     { key: 'dev-updates', label: 'Dev Updates', count: 0 },
 ];
+const TRADE_EVENT_NAME = 'tradeEvent';
 
 const SHORT_ADDRESS_START = 4;
 const SHORT_ADDRESS_END = 4;
@@ -162,6 +164,110 @@ function toBigIntValue(value) {
     if (typeof value === 'string') return BigInt(value);
     if (value && typeof value.toString === 'function') return BigInt(value.toString());
     return null;
+}
+
+function toCamelCaseFieldName(value) {
+    return value.replace(/_([a-z])/g, (_, char) => char.toUpperCase());
+}
+
+function readEventField(event, fieldName) {
+    const camelFieldName = toCamelCaseFieldName(fieldName);
+
+    if (event && Object.prototype.hasOwnProperty.call(event, fieldName)) {
+        return event[fieldName];
+    }
+    if (event && Object.prototype.hasOwnProperty.call(event, camelFieldName)) {
+        return event[camelFieldName];
+    }
+
+    return null;
+}
+
+function formatEventValueForConsole(value) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value;
+    if (typeof value === 'bigint') return value.toString();
+    if (typeof value === 'string') return value;
+    if (value?.toBase58) return value.toBase58();
+    if (value?.toString) return value.toString();
+    return value;
+}
+
+function formatTradeEventForConsole(event) {
+    const fields = [
+        'mint',
+        'bonding_curve',
+        'trader',
+        'is_buy',
+        'token_amount',
+        'sol_amount_gross',
+        'sol_amount_net',
+        'platform_fee',
+        'builder_fee',
+        'virtual_token_reserves',
+        'virtual_sol_reserves',
+        'real_token_reserves',
+        'real_sol_reserves',
+        'timestamp',
+    ];
+
+    return fields.reduce((formatted, fieldName) => {
+        formatted[fieldName] = formatEventValueForConsole(readEventField(event, fieldName));
+        return formatted;
+    }, {});
+}
+
+async function logTradeEventFromTransaction({ connection, program, signature, tokenMint }) {
+    try {
+        let txDetails = null;
+
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+            txDetails = await connection.getTransaction(signature, {
+                commitment: 'confirmed',
+                maxSupportedTransactionVersion: 0,
+            });
+
+            if (txDetails?.meta?.logMessages?.length) break;
+            await sleep(500);
+        }
+
+        const logs = txDetails?.meta?.logMessages || [];
+        if (!logs.length) {
+            console.warn('Shipit TradeEvent diagnostic: confirmed swap transaction logs were not available', {
+                signature,
+            });
+            return;
+        }
+
+        const parser = new EventParser(program.programId, program.coder);
+        const parsedEvents = Array.from(parser.parseLogs(logs));
+        const tradeEvents = parsedEvents
+            .filter((parsedEvent) => parsedEvent.name === TRADE_EVENT_NAME)
+            .map((parsedEvent) => formatTradeEventForConsole(parsedEvent.data));
+        const matchingTradeEvent = tradeEvents.find((tradeEvent) => tradeEvent.mint === tokenMint);
+
+        if (matchingTradeEvent) {
+            console.log('Shipit TradeEvent from confirmed swap transaction', {
+                signature,
+                ...matchingTradeEvent,
+            });
+            return;
+        }
+
+        console.warn('Shipit TradeEvent diagnostic: no matching TradeEvent found in confirmed swap transaction logs', {
+            signature,
+            tokenMint,
+            parsedEventNames: parsedEvents.map((parsedEvent) => parsedEvent.name),
+            tradeEvents,
+            logs,
+        });
+    } catch (err) {
+        console.error('Shipit TradeEvent diagnostic failed:', {
+            signature,
+            message: err?.message || String(err),
+        });
+    }
 }
 
 function readCurveFieldAsBigInt(curveAccount, keys) {
@@ -617,6 +723,50 @@ export default function TokenDetailsPage() {
     useEffect(() => {
         refreshBuilderClaimOverview({ silent: true });
     }, [refreshBuilderClaimOverview, swapTx, builderClaimTx]);
+
+    useEffect(() => {
+        if (
+            accessStatus !== 'granted'
+            || !validTokenAddress
+            || !programConfig?.idl
+            || !programConfig?.contractAddress
+        ) {
+            return undefined;
+        }
+
+        const walletProvider = getWalletProvider();
+        if (!walletProvider) return undefined;
+
+        const provider = new AnchorProvider(
+            new Connection(DEVNET_RPC, 'confirmed'),
+            walletProvider,
+            { preflightCommitment: 'confirmed' }
+        );
+        const normalizedIdl = {
+            ...programConfig.idl,
+            address: programConfig.contractAddress,
+        };
+        const program = new Program(normalizedIdl, provider);
+        const listener = program.addEventListener(TRADE_EVENT_NAME, (event, slot, signature) => {
+            const formattedEvent = formatTradeEventForConsole(event);
+
+            if (formattedEvent.mint && formattedEvent.mint !== validTokenAddress) {
+                return;
+            }
+
+            console.log('Shipit TradeEvent', {
+                slot,
+                signature,
+                ...formattedEvent,
+            });
+        }, 'confirmed');
+
+        return () => {
+            program.removeEventListener(listener).catch((err) => {
+                console.error('Failed to remove Shipit TradeEvent listener:', err);
+            });
+        };
+    }, [accessStatus, getWalletProvider, programConfig, validTokenAddress]);
 
     useEffect(() => {
         async function restoreWalletSession() {
@@ -1317,6 +1467,12 @@ export default function TokenDetailsPage() {
                 });
 
             setSwapTx(tx);
+            await logTradeEventFromTransaction({
+                connection,
+                program,
+                signature: tx,
+                tokenMint: validTokenAddress,
+            });
         } catch (err) {
             const msg = err?.message || 'Swap failed';
             if (msg.includes('already been processed')) {
@@ -1737,6 +1893,13 @@ export default function TokenDetailsPage() {
                                             </div>
                                         </div>
                                     </div>
+
+                                    <ProjectTradeChart
+                                        tokenAddress={validTokenAddress}
+                                        tokenSymbol={tokenTicker}
+                                        tokenDecimals={tokenDecimals}
+                                        refreshKey={swapTx}
+                                    />
 
                                     <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
                                         <p className="font-mono" style={{ fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
