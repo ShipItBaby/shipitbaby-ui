@@ -470,6 +470,8 @@ export default function TokenDetailsPage() {
         () => getProjectCategoryTagStyle(project?.category),
         [project?.category]
     );
+    const projectLaunchTypeLabel = formatLaunchType(project?.launch_type);
+    const showProjectLaunchTypeBadge = projectLaunchTypeLabel.toLowerCase() !== 'open';
 
     const repoCommitsCount = Number.isFinite(repo?.total_commits_count)
         ? repo.total_commits_count
@@ -1995,9 +1997,11 @@ export default function TokenDetailsPage() {
 
                                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                                             <span className="tag" style={projectCategoryTagStyle}>{project.category || 'uncategorized'}</span>
-                                            <span className="tag" style={{ color: '#94a3b8', borderColor: '#334155' }}>
-                                                {formatLaunchType(project.launch_type)}
-                                            </span>
+                                            {showProjectLaunchTypeBadge && (
+                                                <span className="tag" style={{ color: '#94a3b8', borderColor: '#334155' }}>
+                                                    {projectLaunchTypeLabel}
+                                                </span>
+                                            )}
                                             <span className="tag" style={{ color: '#38bdf8', borderColor: '#38bdf8' }}>
                                                 {repoCommitsCount} commits
                                             </span>

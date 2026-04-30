@@ -152,6 +152,11 @@ body {
   transform: translateY(-2px);
 }
 
+.card:has(.instant-tooltip:hover),
+.card:has(.instant-tooltip:focus-visible) {
+  z-index: 30;
+}
+
 /* Tag chip */
 .tag {
   display: inline-flex;
@@ -188,6 +193,7 @@ body {
 
 .instant-tooltip {
   position: relative;
+  z-index: 40;
 }
 
 .instant-tooltip::before {

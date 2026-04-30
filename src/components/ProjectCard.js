@@ -27,6 +27,8 @@ export default function ProjectCard({ project, repo, delay = 0 }) {
     const categoryTagStyle = getProjectCategoryTagStyle(project?.category);
     const projectPath = tokenAddress ? `/project/${encodeURIComponent(tokenAddress)}` : null;
     const hasLinkedRepo = typeof repo?.url === 'string' && repo.url.trim().length > 0;
+    const launchTypeLabel = typeof project?.launch_type === 'string' ? project.launch_type.trim() : '';
+    const showLaunchTypeBadge = launchTypeLabel.length > 0 && launchTypeLabel.toLowerCase() !== 'open';
     const card = (
         <div className="card" style={{ animationDelay: `${delay}ms`, cursor: projectPath ? 'pointer' : 'default' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
@@ -54,28 +56,6 @@ export default function ProjectCard({ project, repo, delay = 0 }) {
                             <span className="font-pixel" style={{ fontSize: '1.3rem', color: '#22c55e' }}>
                                 {displayTicker}
                             </span>
-                            {hasLinkedRepo && (
-                                <span
-                                    className="instant-tooltip"
-                                    data-tooltip="Verified GitHub repo"
-                                    aria-label="Verified GitHub repository linked"
-                                    style={{
-                                        width: 22,
-                                        height: 22,
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        flexShrink: 0,
-                                        color: '#06d6a0',
-                                        background: 'rgba(6,214,160,0.1)',
-                                        border: '1px solid rgba(6,214,160,0.75)',
-                                        borderRadius: '50%',
-                                        boxShadow: '0 0 10px rgba(6,214,160,0.25)',
-                                    }}
-                                >
-                                    <GithubIcon size={13} color="currentColor" />
-                                </span>
-                            )}
                         </div>
                         <p style={{ fontSize: '0.72rem', color: '#64748b' }}>
                             {project?.short_description || 'No description'}
@@ -89,15 +69,41 @@ export default function ProjectCard({ project, repo, delay = 0 }) {
                 <span className="tag" style={{ fontSize: '0.62rem', ...categoryTagStyle }}>
                     {project?.category || 'uncategorized'}
                 </span>
-                <span className="tag" style={{ fontSize: '0.62rem', color: '#475569', borderColor: '#1e1e30' }}>
-                    {project?.launch_type || 'open'}
-                </span>
+                {showLaunchTypeBadge && (
+                    <span className="tag" style={{ fontSize: '0.62rem', color: '#475569', borderColor: '#1e1e30' }}>
+                        {launchTypeLabel}
+                    </span>
+                )}
             </div>
 
-            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #1e1e30', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #1e1e30', display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
                 <span className="font-mono" style={{ fontSize: '0.65rem', color: '#64748b' }}>
                     {commits} commits
                 </span>
+                {hasLinkedRepo && (
+                    <span
+                        className="instant-tooltip"
+                        data-tooltip="Verified GitHub repo"
+                        aria-label="Verified GitHub repository linked"
+                        style={{
+                            position: 'absolute',
+                            right: 0,
+                            top: 8,
+                            width: 22,
+                            height: 22,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#06d6a0',
+                            background: 'rgba(6,214,160,0.1)',
+                            border: '1px solid rgba(6,214,160,0.75)',
+                            borderRadius: '50%',
+                            boxShadow: '0 0 10px rgba(6,214,160,0.25)',
+                        }}
+                    >
+                        <GithubIcon size={13} color="currentColor" />
+                    </span>
+                )}
             </div>
         </div>
     );
