@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 
 const SOL_DECIMALS = 9;
-const POLL_INTERVAL_MS = 5000;
 const CHART_HEIGHT = 320;
 const TIMEFRAME_OPTIONS = [
     { label: '5M', value: '5m' },
@@ -83,6 +83,39 @@ function formatAxisTime(unixSeconds, timeframe) {
 function toNumber(value) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getTradeKey(trade) {
+    if (!trade?.signature) return null;
+
+    return `${trade.signature}:${trade.event_index ?? 0}`;
+}
+
+function compareTrades(a, b) {
+    return (
+        toNumber(a?.event_timestamp) - toNumber(b?.event_timestamp)
+        || toNumber(a?.slot) - toNumber(b?.slot)
+        || toNumber(a?.event_index) - toNumber(b?.event_index)
+        || toNumber(a?.id) - toNumber(b?.id)
+    );
+}
+
+function mergeTradeRows(currentTrades, nextTrades) {
+    const tradeByKey = new Map();
+
+    for (const trade of currentTrades || []) {
+        const key = getTradeKey(trade);
+        if (!key) continue;
+        tradeByKey.set(key, trade);
+    }
+
+    for (const trade of nextTrades || []) {
+        const key = getTradeKey(trade);
+        if (!key) continue;
+        tradeByKey.set(key, trade);
+    }
+
+    return Array.from(tradeByKey.values()).sort(compareTrades);
 }
 
 function tradeToChartPoint(trade, tokenDecimals, sequence) {
@@ -253,8 +286,9 @@ export default function ProjectTradeChart({ tokenAddress, tokenSymbol, tokenDeci
             return undefined;
         }
 
+        setTrades((currentTrades) => currentTrades.filter((trade) => trade?.token_mint === tokenAddress));
+
         let cancelled = false;
-        let intervalId = null;
         let activeController = null;
 
         async function loadTrades(options = {}) {
@@ -282,7 +316,11 @@ export default function ProjectTradeChart({ tokenAddress, tokenSymbol, tokenDeci
                 }
 
                 if (cancelled) return;
-                setTrades(Array.isArray(data?.trades) ? data.trades : []);
+                const responseTrades = Array.isArray(data?.trades) ? data.trades : [];
+                setTrades((currentTrades) => mergeTradeRows(
+                    currentTrades.filter((trade) => trade?.token_mint === tokenAddress),
+                    responseTrades
+                ));
                 setStatus('ready');
                 setError(null);
             } catch (err) {
@@ -293,16 +331,54 @@ export default function ProjectTradeChart({ tokenAddress, tokenSymbol, tokenDeci
         }
 
         loadTrades();
-        intervalId = setInterval(() => {
-            void loadTrades({ silent: true });
-        }, POLL_INTERVAL_MS);
 
         return () => {
             cancelled = true;
             activeController?.abort();
-            clearInterval(intervalId);
         };
     }, [activeTimeframe, refreshKey, tokenAddress]);
+
+    useEffect(() => {
+        if (!tokenAddress) return undefined;
+
+        const supabase = getSupabaseBrowserClient();
+        if (!supabase) {
+            console.warn('Supabase realtime disabled: NEXT_PUBLIC_SUPABASE_ANON_KEY is not configured.');
+            return undefined;
+        }
+
+        let cancelled = false;
+        const channel = supabase
+            .channel(`project-trades:${tokenAddress}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'trades',
+                    filter: `token_mint=eq.${tokenAddress}`,
+                },
+                (payload) => {
+                    const trade = payload?.new;
+                    if (cancelled || !trade || trade.token_mint !== tokenAddress) return;
+
+                    setTrades((currentTrades) => mergeTradeRows(
+                        currentTrades.filter((currentTrade) => currentTrade?.token_mint === tokenAddress),
+                        [trade]
+                    ));
+                }
+            )
+            .subscribe((channelStatus, err) => {
+                if (cancelled || channelStatus !== 'CHANNEL_ERROR') return;
+
+                console.error('Supabase realtime project trades subscription failed:', err);
+            });
+
+        return () => {
+            cancelled = true;
+            void supabase.removeChannel(channel);
+        };
+    }, [tokenAddress]);
 
     useEffect(() => {
         if (!containerRef.current || chartRef.current) return undefined;
