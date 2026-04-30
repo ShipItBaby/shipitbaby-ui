@@ -2,11 +2,29 @@ import { NextResponse } from 'next/server';
 import { PublicKey } from '@solana/web3.js';
 import { supabase } from '@/lib/supabase';
 import { getSessionWalletFromRequest } from '@/lib/authSession';
+import { normalizeGithubRepoUrl } from '@/lib/githubRepoUrl';
+import { attachRepositoryToProject } from '@/lib/projectRepos';
 import {
     createEmptySentimentCounts,
     normalizeSentiment,
     tallySentimentCounts,
 } from '@/lib/projectSentiment';
+
+async function fetchCurrentUser(wallet) {
+    if (!wallet) return null;
+
+    const { data: user, error: userError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('wallet', wallet)
+        .maybeSingle();
+
+    if (userError) {
+        throw userError;
+    }
+
+    return user || null;
+}
 
 export async function GET(request, { params }) {
     const resolvedParams = await params;
@@ -89,37 +107,35 @@ export async function GET(request, { params }) {
         sentimentCounts = tallySentimentCounts(voteRows || []);
     }
 
-    let userSentiment = null;
+    let currentUser = null;
     const sessionWallet = getSessionWalletFromRequest(request);
-    if (sessionWallet && canQueryVotes) {
-        const { data: user, error: userError } = await supabase
-            .from('users')
-            .select('id')
-            .eq('wallet', sessionWallet)
-            .single();
-
-        if (userError && userError.code !== 'PGRST116') {
+    if (sessionWallet) {
+        try {
+            currentUser = await fetchCurrentUser(sessionWallet);
+        } catch (userError) {
             console.error('Supabase fetch user for project sentiment error:', userError);
             return NextResponse.json({ error: 'Database error' }, { status: 500 });
         }
+    }
 
-        if (user?.id) {
-            const { data: userVote, error: userVoteError } = await supabase
-                .from('project_votes')
-                .select('sentiment')
-                .eq('project_id', project.id)
-                .eq('user_id', user.id)
-                .maybeSingle();
+    const canManageProject = Boolean(currentUser?.id && currentUser.id === project.deployer_id);
+    let userSentiment = null;
+    if (currentUser?.id && canQueryVotes) {
+        const { data: userVote, error: userVoteError } = await supabase
+            .from('project_votes')
+            .select('sentiment')
+            .eq('project_id', project.id)
+            .eq('user_id', currentUser.id)
+            .maybeSingle();
 
-            if (userVoteError) {
-                if (userVoteError.code !== '42P01') {
-                    console.error('Supabase fetch user sentiment vote error:', userVoteError);
-                    return NextResponse.json({ error: 'Database error' }, { status: 500 });
-                }
+        if (userVoteError) {
+            if (userVoteError.code !== '42P01') {
+                console.error('Supabase fetch user sentiment vote error:', userVoteError);
+                return NextResponse.json({ error: 'Database error' }, { status: 500 });
             }
-
-            userSentiment = normalizeSentiment(userVote?.sentiment);
         }
+
+        userSentiment = normalizeSentiment(userVote?.sentiment);
     }
 
     return NextResponse.json(
@@ -128,7 +144,88 @@ export async function GET(request, { params }) {
             repo,
             sentiment_counts: sentimentCounts,
             user_sentiment: userSentiment,
+            can_manage_project: canManageProject,
         },
         { status: 200 }
     );
+}
+
+export async function PATCH(request, { params }) {
+    const sessionWallet = getSessionWalletFromRequest(request);
+    if (!sessionWallet) {
+        return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
+    const resolvedParams = await params;
+    const tokenAddressParam = typeof resolvedParams?.tokenAddress === 'string'
+        ? resolvedParams.tokenAddress
+        : '';
+
+    if (!tokenAddressParam) {
+        return NextResponse.json({ error: 'tokenAddress is required' }, { status: 400 });
+    }
+
+    let normalizedTokenAddress;
+    try {
+        normalizedTokenAddress = new PublicKey(tokenAddressParam).toBase58();
+    } catch {
+        return NextResponse.json({ error: 'Invalid token address' }, { status: 400 });
+    }
+
+    let payload;
+    try {
+        payload = await request.json();
+    } catch {
+        return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+
+    let normalizedRepoUrl;
+    try {
+        normalizedRepoUrl = normalizeGithubRepoUrl(payload?.repo_url);
+    } catch (err) {
+        return NextResponse.json({ error: err.message || 'Invalid GitHub repository URL' }, { status: 400 });
+    }
+
+    if (!normalizedRepoUrl) {
+        return NextResponse.json({ error: 'repo_url is required' }, { status: 400 });
+    }
+
+    const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .select('id, deployer_id')
+        .eq('token_address', normalizedTokenAddress)
+        .maybeSingle();
+
+    if (projectError) {
+        console.error('Supabase fetch project for repo attach error:', projectError);
+        return NextResponse.json({ error: 'Database error' }, { status: 500 });
+    }
+
+    if (!project?.id) {
+        return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    let currentUser = null;
+    try {
+        currentUser = await fetchCurrentUser(sessionWallet);
+    } catch (userError) {
+        console.error('Supabase fetch current user for repo attach error:', userError);
+        return NextResponse.json({ error: 'Database error' }, { status: 500 });
+    }
+
+    if (!currentUser?.id || currentUser.id !== project.deployer_id) {
+        return NextResponse.json({ error: 'Only the project owner can link a repository' }, { status: 403 });
+    }
+
+    const repoResult = await attachRepositoryToProject({
+        userId: currentUser.id,
+        projectId: project.id,
+        repoUrl: normalizedRepoUrl,
+    });
+
+    if (repoResult.error) {
+        return NextResponse.json({ error: repoResult.error }, { status: repoResult.status || 500 });
+    }
+
+    return NextResponse.json({ repo: repoResult.repo || null }, { status: 200 });
 }

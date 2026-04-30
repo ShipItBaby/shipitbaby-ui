@@ -819,7 +819,7 @@ export default function Profile() {
                             {githubUsername && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                     <label className="font-mono" style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                        GitHub Repository
+                                        GitHub Repository (optional)
                                     </label>
                                     <select
                                         value={selectedGithubRepoUrl}
@@ -835,7 +835,7 @@ export default function Profile() {
                                         onBlur={e => { e.currentTarget.style.borderColor = '#1e1e30'; }}
                                     >
                                         <option value="">
-                                            {githubReposStatus === 'loading' ? 'Loading GitHub Repos' : 'Select public repo'}
+                                            {githubReposStatus === 'loading' ? 'Loading GitHub Repos' : 'Select public repo (optional)'}
                                         </option>
                                         {githubRepos.map((repo) => (
                                             <option key={repo.id || repo.url} value={repo.url}>
@@ -858,7 +858,7 @@ export default function Profile() {
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                 <label className="font-mono" style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                    GitHub Repo URL
+                                    GitHub Repo URL (optional)
                                 </label>
                                 <input
                                     type="url"
@@ -874,6 +874,9 @@ export default function Profile() {
                                     onFocus={e => { e.currentTarget.style.borderColor = '#06d6a0'; }}
                                     onBlur={e => { e.currentTarget.style.borderColor = '#1e1e30'; }}
                                 />
+                                <span className="font-mono" style={{ fontSize: '0.65rem', color: '#475569' }}>
+                                    You can add a GitHub repo later.
+                                </span>
                             </div>
 
                             {/* URI */}

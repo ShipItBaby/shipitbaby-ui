@@ -390,7 +390,7 @@ export default function TokenPage() {
                                 style={{ padding: '12px', background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0' }}
                             >
                                 <option value="">
-                                    {githubReposStatus === 'loading' ? 'Loading GitHub Repos' : 'Select Public GitHub Repo'}
+                                    {githubReposStatus === 'loading' ? 'Loading GitHub Repos' : 'Select Public GitHub Repo (optional)'}
                                 </option>
                                 {githubRepos.map((repo) => (
                                     <option key={repo.id || repo.url} value={repo.url}>
@@ -414,6 +414,10 @@ export default function TokenPage() {
                             className="font-mono"
                             style={{ padding: '12px', background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0' }}
                         />
+
+                        <div className="font-mono" style={{ color: '#475569', fontSize: '0.72rem' }}>
+                            GitHub repo is optional. You can add it later.
+                        </div>
 
                         <input
                             required

@@ -27,6 +27,7 @@ import {
     sanitizeProjectCommentBody,
     trimProjectCommentToMaxChars,
 } from '@/lib/projectComments';
+import { normalizeGithubRepoUrl } from '@/lib/githubRepoUrl';
 
 const DEVNET_RPC = 'https://api.devnet.solana.com';
 const TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
@@ -387,6 +388,15 @@ export default function TokenDetailsPage() {
     const [projectStatus, setProjectStatus] = useState('idle');
     const [projectError, setProjectError] = useState(null);
     const [projectRow, setProjectRow] = useState({ project: null, repo: null });
+    const [canManageProject, setCanManageProject] = useState(false);
+    const [showLinkRepoPopup, setShowLinkRepoPopup] = useState(false);
+    const [repoLinkForm, setRepoLinkForm] = useState({ repoUrl: '' });
+    const [repoLinkStatus, setRepoLinkStatus] = useState('idle');
+    const [repoLinkError, setRepoLinkError] = useState(null);
+    const [githubUsername, setGithubUsername] = useState(null);
+    const [githubRepos, setGithubRepos] = useState([]);
+    const [githubReposStatus, setGithubReposStatus] = useState('idle');
+    const [githubReposError, setGithubReposError] = useState(null);
     const [sentimentCounts, setSentimentCounts] = useState(createEmptySentimentCounts);
     const [userSentiment, setUserSentiment] = useState(null);
     const [sentimentVoteStatus, setSentimentVoteStatus] = useState('idle');
@@ -464,6 +474,10 @@ export default function TokenDetailsPage() {
     const repoCommitsCount = Number.isFinite(repo?.total_commits_count)
         ? repo.total_commits_count
         : 0;
+    const hasLinkedRepo = typeof repo?.url === 'string' && repo.url.trim().length > 0;
+    const selectedGithubRepoUrl = githubRepos.some((githubRepo) => githubRepo.url === repoLinkForm.repoUrl)
+        ? repoLinkForm.repoUrl
+        : '';
 
     const reactionItems = useMemo(() => (
         SENTIMENT_OPTIONS.map((item) => ({
@@ -874,6 +888,7 @@ export default function TokenDetailsPage() {
             setProjectStatus('idle');
             setProjectError(null);
             setProjectRow({ project: null, repo: null });
+            setCanManageProject(false);
             setSentimentCounts(createEmptySentimentCounts());
             setUserSentiment(null);
             setSentimentVoteStatus('idle');
@@ -901,6 +916,7 @@ export default function TokenDetailsPage() {
                     project: data?.project || null,
                     repo: data?.repo || null,
                 });
+                setCanManageProject(Boolean(data?.can_manage_project));
                 setSentimentCounts(toSentimentCounts(data?.sentiment_counts));
                 setUserSentiment(normalizeSentiment(data?.user_sentiment));
                 setSentimentVoteStatus('idle');
@@ -910,6 +926,7 @@ export default function TokenDetailsPage() {
                 if (cancelled) return;
                 setProjectStatus('error');
                 setProjectError(err?.message || 'Failed to load project details');
+                setCanManageProject(false);
             }
         }
 
@@ -919,6 +936,50 @@ export default function TokenDetailsPage() {
             cancelled = true;
         };
     }, [accessStatus, validTokenAddress]);
+
+    useEffect(() => {
+        if (!showLinkRepoPopup || !canManageProject) {
+            setGithubRepos([]);
+            setGithubReposStatus('idle');
+            setGithubReposError(null);
+            setGithubUsername(null);
+            return;
+        }
+
+        let cancelled = false;
+
+        async function loadGithubRepos() {
+            setGithubReposStatus('loading');
+            setGithubReposError(null);
+
+            try {
+                const response = await fetch('/api/github/repos', { cache: 'no-store' });
+                const data = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to load GitHub repositories');
+                }
+
+                if (cancelled) return;
+
+                setGithubUsername(data.github_username || null);
+                setGithubRepos(Array.isArray(data.repos) ? data.repos : []);
+                setGithubReposStatus('loaded');
+            } catch (err) {
+                if (cancelled) return;
+                setGithubUsername(null);
+                setGithubRepos([]);
+                setGithubReposStatus('error');
+                setGithubReposError(err?.message || 'Failed to load GitHub repositories');
+            }
+        }
+
+        loadGithubRepos();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [canManageProject, showLinkRepoPopup]);
 
     useEffect(() => {
         if (!validTokenAddress || accessStatus !== 'granted') {
@@ -1551,6 +1612,72 @@ export default function TokenDetailsPage() {
             setBuilderClaimError(err?.message || 'Claim failed');
         } finally {
             setIsClaimingBuilderFees(false);
+        }
+    }
+
+    function openLinkRepoPopup() {
+        setRepoLinkForm({ repoUrl: '' });
+        setRepoLinkStatus('idle');
+        setRepoLinkError(null);
+        setShowLinkRepoPopup(true);
+    }
+
+    function closeLinkRepoPopup() {
+        if (repoLinkStatus === 'submitting') return;
+        setShowLinkRepoPopup(false);
+        setRepoLinkError(null);
+    }
+
+    async function handleLinkRepo(event) {
+        event.preventDefault();
+        if (repoLinkStatus === 'submitting') return;
+        if (!validTokenAddress) {
+            setRepoLinkError('Invalid token address');
+            return;
+        }
+
+        let normalizedRepoUrl;
+        try {
+            normalizedRepoUrl = normalizeGithubRepoUrl(repoLinkForm.repoUrl);
+        } catch (err) {
+            setRepoLinkError(err?.message || 'Invalid GitHub repository URL');
+            return;
+        }
+
+        if (!normalizedRepoUrl) {
+            setRepoLinkError('GitHub repo URL is required');
+            return;
+        }
+
+        setRepoLinkStatus('submitting');
+        setRepoLinkError(null);
+
+        try {
+            const walletProvider = getWalletProvider();
+            if (!walletProvider || !walletAddress) throw new Error('Wallet not connected');
+            await ensureWalletSession(walletProvider, walletAddress);
+
+            const response = await fetch(`/api/projects/${encodeURIComponent(validTokenAddress)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ repo_url: normalizedRepoUrl }),
+            });
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Failed to link GitHub repository');
+            }
+
+            setProjectRow((previous) => ({
+                ...previous,
+                repo: data?.repo || null,
+            }));
+            setShowLinkRepoPopup(false);
+            setRepoLinkForm({ repoUrl: '' });
+        } catch (err) {
+            setRepoLinkError(err?.message || 'Failed to link GitHub repository');
+        } finally {
+            setRepoLinkStatus('idle');
         }
     }
 
@@ -2210,6 +2337,15 @@ export default function TokenDetailsPage() {
                                     >
                                         View On Solscan
                                     </a>
+                                    {canManageProject && !hasLinkedRepo && (
+                                        <button
+                                            type="button"
+                                            className="btn-pixel btn-pixel-secondary"
+                                            onClick={openLinkRepoPopup}
+                                        >
+                                            Link Repo
+                                        </button>
+                                    )}
                                 </div>
                             </div>
 
@@ -2565,6 +2701,164 @@ export default function TokenDetailsPage() {
                             </button>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {showLinkRepoPopup && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 1000,
+                        background: 'rgba(0,0,0,0.72)',
+                        backdropFilter: 'blur(4px)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 24,
+                    }}
+                    onClick={closeLinkRepoPopup}
+                >
+                    <form
+                        onSubmit={handleLinkRepo}
+                        style={{
+                            width: '100%',
+                            maxWidth: 460,
+                            background: '#0f0f1a',
+                            border: '1px solid #1e1e30',
+                            boxShadow: '8px 8px 0px rgba(0,0,0,0.45)',
+                            padding: 24,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 14,
+                        }}
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                            <div>
+                                <p className="font-pixel" style={{ margin: 0, fontSize: '1.45rem', color: '#e2e8f0' }}>
+                                    Link GitHub Repo
+                                </p>
+                                <p className="font-mono" style={{ margin: '6px 0 0 0', fontSize: '0.78rem', color: '#64748b', lineHeight: 1.5 }}>
+                                    Select a public repo or paste a GitHub URL.
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeLinkRepoPopup}
+                                disabled={repoLinkStatus === 'submitting'}
+                                className="font-mono"
+                                style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#64748b',
+                                    fontSize: '1.2rem',
+                                    cursor: repoLinkStatus === 'submitting' ? 'not-allowed' : 'pointer',
+                                    padding: '2px 6px',
+                                    lineHeight: 1,
+                                }}
+                            >
+                                x
+                            </button>
+                        </div>
+
+                        {githubUsername && (
+                            <select
+                                value={selectedGithubRepoUrl}
+                                onChange={(event) => setRepoLinkForm({ repoUrl: event.target.value })}
+                                disabled={githubReposStatus === 'loading' || githubRepos.length === 0 || repoLinkStatus === 'submitting'}
+                                className="font-mono"
+                                style={{
+                                    padding: '10px 14px',
+                                    fontSize: '0.9rem',
+                                    background: '#13131f',
+                                    border: '1px solid #1e1e30',
+                                    color: '#e2e8f0',
+                                    outline: 'none',
+                                }}
+                            >
+                                <option value="">
+                                    {githubReposStatus === 'loading' ? 'Loading GitHub Repos' : 'Select public repo'}
+                                </option>
+                                {githubRepos.map((githubRepo) => (
+                                    <option key={githubRepo.id || githubRepo.url} value={githubRepo.url}>
+                                        {githubRepo.full_name || githubRepo.url}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+
+                        {githubReposStatus === 'error' && (
+                            <div className="font-mono" style={{ color: '#ef4444', fontSize: '0.78rem', wordBreak: 'break-word' }}>
+                                {githubReposError}
+                            </div>
+                        )}
+
+                        <label className="font-mono" style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            GitHub Repo URL
+                            <input
+                                required
+                                type="url"
+                                value={repoLinkForm.repoUrl}
+                                onChange={(event) => setRepoLinkForm({ repoUrl: event.target.value })}
+                                placeholder="https://github.com/owner/repo"
+                                disabled={repoLinkStatus === 'submitting'}
+                                className="font-mono"
+                                style={{
+                                    padding: '10px 14px',
+                                    fontSize: '0.9rem',
+                                    background: '#13131f',
+                                    border: '1px solid #1e1e30',
+                                    color: '#e2e8f0',
+                                    outline: 'none',
+                                    textTransform: 'none',
+                                    letterSpacing: 0,
+                                }}
+                            />
+                        </label>
+
+                        {repoLinkError && (
+                            <div className="font-mono" style={{
+                                padding: '10px 14px',
+                                fontSize: '0.78rem',
+                                background: 'rgba(239,68,68,0.1)',
+                                border: '1px solid rgba(239,68,68,0.3)',
+                                color: '#ef4444',
+                                wordBreak: 'break-word',
+                            }}>
+                                {repoLinkError}
+                            </div>
+                        )}
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                            <button
+                                type="submit"
+                                disabled={repoLinkStatus === 'submitting'}
+                                className="btn-pixel btn-pixel-secondary"
+                                style={{
+                                    opacity: repoLinkStatus === 'submitting' ? 0.6 : 1,
+                                    cursor: repoLinkStatus === 'submitting' ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {repoLinkStatus === 'submitting' ? 'Linking...' : 'Link Repo'}
+                            </button>
+                            <button
+                                type="button"
+                                className="btn-pixel"
+                                disabled={repoLinkStatus === 'submitting'}
+                                onClick={closeLinkRepoPopup}
+                                style={{
+                                    border: '1px solid #334155',
+                                    color: '#cbd5e1',
+                                    background: 'transparent',
+                                    boxShadow: 'none',
+                                    opacity: repoLinkStatus === 'submitting' ? 0.6 : 1,
+                                }}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
                 </div>
             )}
 

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { GithubIcon } from '@/components/icons';
 import { getProjectCategoryTagStyle } from '@/lib/projectCategories';
 
 function getStageTagClass(stage) {
@@ -25,6 +26,7 @@ export default function ProjectCard({ project, repo, delay = 0 }) {
     const displayTicker = tickerValue ? (tickerValue.startsWith('$') ? tickerValue : `$${tickerValue}`) : 'N/A';
     const categoryTagStyle = getProjectCategoryTagStyle(project?.category);
     const projectPath = tokenAddress ? `/project/${encodeURIComponent(tokenAddress)}` : null;
+    const hasLinkedRepo = typeof repo?.url === 'string' && repo.url.trim().length > 0;
     const card = (
         <div className="card" style={{ animationDelay: `${delay}ms`, cursor: projectPath ? 'pointer' : 'default' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
@@ -52,6 +54,28 @@ export default function ProjectCard({ project, repo, delay = 0 }) {
                             <span className="font-pixel" style={{ fontSize: '1.3rem', color: '#22c55e' }}>
                                 {displayTicker}
                             </span>
+                            {hasLinkedRepo && (
+                                <span
+                                    className="instant-tooltip"
+                                    data-tooltip="Verified GitHub repo"
+                                    aria-label="Verified GitHub repository linked"
+                                    style={{
+                                        width: 22,
+                                        height: 22,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        flexShrink: 0,
+                                        color: '#06d6a0',
+                                        background: 'rgba(6,214,160,0.1)',
+                                        border: '1px solid rgba(6,214,160,0.75)',
+                                        borderRadius: '50%',
+                                        boxShadow: '0 0 10px rgba(6,214,160,0.25)',
+                                    }}
+                                >
+                                    <GithubIcon size={13} color="currentColor" />
+                                </span>
+                            )}
                         </div>
                         <p style={{ fontSize: '0.72rem', color: '#64748b' }}>
                             {project?.short_description || 'No description'}
