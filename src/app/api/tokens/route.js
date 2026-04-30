@@ -3,6 +3,7 @@ import { PublicKey } from '@solana/web3.js';
 import { supabase } from '@/lib/supabase';
 import { withBeta } from '@/lib/withBeta';
 import { getSessionWalletFromRequest } from '@/lib/authSession';
+import { normalizeGithubRepoUrl } from '@/lib/githubRepoUrl';
 import { normalizeProjectCategory, PROJECT_CATEGORIES } from '@/lib/projectCategories';
 
 function normalizeOptionalText(value, fieldName) {
@@ -12,6 +13,64 @@ function normalizeOptionalText(value, fieldName) {
     }
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
+}
+
+async function attachRepositoryToProject({ userId, projectId, repoUrl }) {
+    const { data: existingRepo, error: existingRepoError } = await supabase
+        .from('repos')
+        .select('id, user_id, project_id, url')
+        .eq('url', repoUrl)
+        .maybeSingle();
+
+    if (existingRepoError) {
+        console.error('Supabase repo lookup error:', existingRepoError);
+        return { error: 'Database error', status: 500 };
+    }
+
+    if (existingRepo) {
+        if (existingRepo.user_id !== userId) {
+            return { error: 'Repository is already attached to another account', status: 409 };
+        }
+
+        if (existingRepo.project_id && existingRepo.project_id !== projectId) {
+            return { error: 'Repository is already attached to another project', status: 409 };
+        }
+
+        const { data: updatedRepo, error: updateError } = await supabase
+            .from('repos')
+            .update({
+                project_id: projectId,
+                is_tracking_active: true,
+            })
+            .eq('id', existingRepo.id)
+            .select('*')
+            .single();
+
+        if (updateError) {
+            console.error('Supabase repo update error:', updateError);
+            return { error: 'Database error', status: 500 };
+        }
+
+        return { repo: updatedRepo };
+    }
+
+    const { data: insertedRepo, error: insertError } = await supabase
+        .from('repos')
+        .insert({
+            user_id: userId,
+            project_id: projectId,
+            url: repoUrl,
+            is_tracking_active: true,
+        })
+        .select('*')
+        .single();
+
+    if (insertError) {
+        console.error('Supabase repo insert error:', insertError);
+        return { error: 'Database error', status: 500 };
+    }
+
+    return { repo: insertedRepo };
 }
 
 async function handler(request) {
@@ -35,6 +94,7 @@ async function handler(request) {
         metadata_link,
         logo_url,
         deployment_tx,
+        repo_url,
     } = payload || {};
     if (!token_address || typeof token_address !== 'string') {
         return NextResponse.json({ error: 'token_address is required' }, { status: 400 });
@@ -62,11 +122,13 @@ async function handler(request) {
     let normalizedMetadataLink;
     let normalizedLogoUrl;
     let normalizedDeploymentTx;
+    let normalizedRepoUrl;
     try {
         normalizedShortDescription = normalizeOptionalText(short_description, 'short_description');
         normalizedMetadataLink = normalizeOptionalText(metadata_link, 'metadata_link');
         normalizedLogoUrl = normalizeOptionalText(logo_url, 'logo_url');
         normalizedDeploymentTx = normalizeOptionalText(deployment_tx, 'deployment_tx');
+        normalizedRepoUrl = normalizeGithubRepoUrl(repo_url);
     } catch (err) {
         return NextResponse.json({ error: err.message || 'Invalid payload' }, { status: 400 });
     }
@@ -134,6 +196,21 @@ async function handler(request) {
         tokenRecord = insertedToken;
     }
 
+    let repoRecord = null;
+    if (normalizedRepoUrl) {
+        const repoResult = await attachRepositoryToProject({
+            userId: user.id,
+            projectId: tokenRecord.id,
+            repoUrl: normalizedRepoUrl,
+        });
+
+        if (repoResult.error) {
+            return NextResponse.json({ error: repoResult.error }, { status: repoResult.status || 500 });
+        }
+
+        repoRecord = repoResult.repo || null;
+    }
+
     const { count, error: countError } = await supabase
         .from('projects')
         .select('id', { count: 'exact', head: true })
@@ -165,6 +242,7 @@ async function handler(request) {
     return NextResponse.json(
         {
             token: tokenRecord,
+            repo: repoRecord,
             user_stats: {
                 launched_tokens_count: launchedTokensCount,
                 has_launched_token: hasLaunchedToken,

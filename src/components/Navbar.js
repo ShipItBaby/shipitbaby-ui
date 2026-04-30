@@ -4,7 +4,10 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { PhantomIcon, SolflareIcon } from './icons';
-import { clearWalletSession } from '@/lib/walletAuthClient';
+import {
+    clearWalletSession,
+    ensureWalletSession,
+} from '@/lib/walletAuthClient';
 
 const SHORT_ADDRESS_START = 4;
 const SHORT_ADDRESS_END = 4;
@@ -93,6 +96,7 @@ export default function Navbar() {
             setConnecting(true);
             const response = await phantom.connect();
             const address = response.publicKey.toString();
+            await ensureWalletSession(phantom, address);
             localStorage.setItem('autoConnect', 'phantom');
             setWalletAddress(address);
             setShowPopup(false);
@@ -114,6 +118,7 @@ export default function Navbar() {
             setConnecting(true);
             await solflare.connect();
             const address = solflare.publicKey.toString();
+            await ensureWalletSession(solflare, address);
             localStorage.setItem('autoConnect', 'solflare');
             setWalletAddress(address);
             setShowPopup(false);

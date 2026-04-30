@@ -14,6 +14,7 @@ import { AnchorProvider, Program } from '@coral-xyz/anchor';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { ensureWalletSession } from '@/lib/walletAuthClient';
+import { normalizeGithubRepoUrl } from '@/lib/githubRepoUrl';
 import { PROJECT_CATEGORY_OPTIONS } from '@/lib/projectCategories';
 
 const DEVNET_RPC = 'https://api.devnet.solana.com';
@@ -39,10 +40,14 @@ export default function TokenPage() {
     const [accessError, setAccessError] = useState(null);
     const [launchConfig, setLaunchConfig] = useState(null);
 
-    const [launchForm, setLaunchForm] = useState({ name: '', symbol: '', category: '', uri: '', logoUrl: '' });
+    const [launchForm, setLaunchForm] = useState({ name: '', symbol: '', category: '', uri: '', logoUrl: '', repoUrl: '' });
     const [isLaunching, setIsLaunching] = useState(false);
     const [launchError, setLaunchError] = useState(null);
     const [launchSuccess, setLaunchSuccess] = useState(null);
+    const [githubUsername, setGithubUsername] = useState(null);
+    const [githubRepos, setGithubRepos] = useState([]);
+    const [githubReposStatus, setGithubReposStatus] = useState('idle');
+    const [githubReposError, setGithubReposError] = useState(null);
     const launchInFlightRef = useRef(false);
 
     const getWalletProvider = useCallback(() => {
@@ -146,6 +151,44 @@ export default function TokenPage() {
         };
     }, [getWalletProvider, walletAddress, walletStatus]);
 
+    useEffect(() => {
+        if (walletStatus !== 'connected' || accessStatus !== 'granted') return;
+
+        let cancelled = false;
+
+        async function loadGithubRepos() {
+            setGithubReposStatus('loading');
+            setGithubReposError(null);
+
+            try {
+                const res = await fetch('/api/github/repos');
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'Failed to load GitHub repositories');
+                }
+
+                if (cancelled) return;
+
+                setGithubUsername(data.github_username || null);
+                setGithubRepos(Array.isArray(data.repos) ? data.repos : []);
+                setGithubReposStatus('loaded');
+            } catch (err) {
+                if (cancelled) return;
+                setGithubUsername(null);
+                setGithubRepos([]);
+                setGithubReposStatus('error');
+                setGithubReposError(err?.message || 'Failed to load GitHub repositories');
+            }
+        }
+
+        loadGithubRepos();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [accessStatus, walletStatus]);
+
     async function handleLaunch(event) {
         event.preventDefault();
         if (launchInFlightRef.current || isLaunching) return;
@@ -153,6 +196,15 @@ export default function TokenPage() {
 
         if (!launchConfig?.idl || !launchConfig?.contractAddress) {
             setLaunchError('Launch config not loaded');
+            launchInFlightRef.current = false;
+            return;
+        }
+
+        let normalizedRepoUrl = null;
+        try {
+            normalizedRepoUrl = normalizeGithubRepoUrl(launchForm.repoUrl);
+        } catch (err) {
+            setLaunchError(err?.message || 'Invalid GitHub repository URL');
             launchInFlightRef.current = false;
             return;
         }
@@ -218,6 +270,7 @@ export default function TokenPage() {
                     metadata_link: launchForm.uri,
                     logo_url: launchForm.logoUrl,
                     deployment_tx: tx,
+                    repo_url: normalizedRepoUrl,
                 }),
             });
             if (!syncRes.ok) {
@@ -234,6 +287,10 @@ export default function TokenPage() {
             launchInFlightRef.current = false;
         }
     }
+
+    const selectedGithubRepoUrl = githubRepos.some((repo) => repo.url === launchForm.repoUrl)
+        ? launchForm.repoUrl
+        : '';
 
     return (
         <div className="grid-bg scanlines" style={{ minHeight: '100vh', position: 'relative', display: 'flex', flexDirection: 'column' }}>
@@ -323,6 +380,40 @@ export default function TokenPage() {
                                 </option>
                             ))}
                         </select>
+
+                        {githubUsername && (
+                            <select
+                                value={selectedGithubRepoUrl}
+                                onChange={e => setLaunchForm(prev => ({ ...prev, repoUrl: e.target.value }))}
+                                className="font-mono"
+                                disabled={githubReposStatus === 'loading' || githubRepos.length === 0}
+                                style={{ padding: '12px', background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0' }}
+                            >
+                                <option value="">
+                                    {githubReposStatus === 'loading' ? 'Loading GitHub Repos' : 'Select Public GitHub Repo'}
+                                </option>
+                                {githubRepos.map((repo) => (
+                                    <option key={repo.id || repo.url} value={repo.url}>
+                                        {repo.full_name || repo.url}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+
+                        {githubReposStatus === 'error' && (
+                            <div className="font-mono" style={{ color: '#ef4444', fontSize: '0.75rem' }}>
+                                {githubReposError}
+                            </div>
+                        )}
+
+                        <input
+                            type="url"
+                            placeholder="GitHub Repo URL (optional)"
+                            value={launchForm.repoUrl}
+                            onChange={e => setLaunchForm(prev => ({ ...prev, repoUrl: e.target.value }))}
+                            className="font-mono"
+                            style={{ padding: '12px', background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0' }}
+                        />
 
                         <input
                             required

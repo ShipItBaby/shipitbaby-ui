@@ -19,6 +19,7 @@ import {
     clearWalletSession,
     ensureWalletSession,
 } from '@/lib/walletAuthClient';
+import { normalizeGithubRepoUrl } from '@/lib/githubRepoUrl';
 import { PROJECT_CATEGORY_OPTIONS } from '@/lib/projectCategories';
 
 const DEVNET_RPC = 'https://api.devnet.solana.com';
@@ -50,10 +51,13 @@ export default function Profile() {
     const [isUpdating, setIsUpdating] = useState(false);
     const [isUnlinking, setIsUnlinking] = useState(false);
     const [showLaunchModal, setShowLaunchModal] = useState(false);
-    const [launchForm, setLaunchForm] = useState({ name: '', symbol: '', category: '', uri: '', logoUrl: '' });
+    const [launchForm, setLaunchForm] = useState({ name: '', symbol: '', category: '', uri: '', logoUrl: '', repoUrl: '' });
     const [isLaunching, setIsLaunching] = useState(false);
     const [launchError, setLaunchError] = useState(null);
     const [launchSuccess, setLaunchSuccess] = useState(null);
+    const [githubRepos, setGithubRepos] = useState([]);
+    const [githubReposStatus, setGithubReposStatus] = useState('idle');
+    const [githubReposError, setGithubReposError] = useState(null);
     const [deployedTokens, setDeployedTokens] = useState([]);
     const [isLoadingTokens, setIsLoadingTokens] = useState(false);
     const [tokensError, setTokensError] = useState(null);
@@ -103,6 +107,7 @@ export default function Profile() {
         setLaunchSuccess(null);
 
         try {
+            const normalizedRepoUrl = normalizeGithubRepoUrl(launchForm.repoUrl);
             const walletProvider = getWalletProvider();
             if (!walletProvider) throw new Error('Wallet not connected');
             await ensureWalletSession(walletProvider, walletAddress);
@@ -167,6 +172,7 @@ export default function Profile() {
                     metadata_link: launchForm.uri,
                     logo_url: launchForm.logoUrl,
                     deployment_tx: tx,
+                    repo_url: normalizedRepoUrl,
                 }),
             });
             if (!syncRes.ok) {
@@ -253,9 +259,7 @@ export default function Profile() {
                 const res = await fetch(`/api/users?wallet=${walletAddress}`);
                 if (res.ok) {
                     const { user } = await res.json();
-                    if (user?.github_username) {
-                        setGithubUsername(user.github_username);
-                    }
+                    setGithubUsername(user?.github_username || null);
                     setIsBeta(user?.is_beta === true);
                 }
             } catch (err) {
@@ -268,6 +272,47 @@ export default function Profile() {
     useEffect(() => {
         fetchDeployedTokens(walletAddress);
     }, [fetchDeployedTokens, walletAddress]);
+
+    useEffect(() => {
+        if (!walletAddress || !githubUsername || !isBeta) {
+            setGithubRepos([]);
+            setGithubReposStatus('idle');
+            setGithubReposError(null);
+            return;
+        }
+
+        let cancelled = false;
+
+        async function loadGithubRepos() {
+            setGithubReposStatus('loading');
+            setGithubReposError(null);
+
+            try {
+                const res = await fetch('/api/github/repos');
+                const data = await res.json().catch(() => ({}));
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'Failed to load GitHub repositories');
+                }
+
+                if (cancelled) return;
+
+                setGithubRepos(Array.isArray(data.repos) ? data.repos : []);
+                setGithubReposStatus('loaded');
+            } catch (err) {
+                if (cancelled) return;
+                setGithubRepos([]);
+                setGithubReposStatus('error');
+                setGithubReposError(err?.message || 'Failed to load GitHub repositories');
+            }
+        }
+
+        loadGithubRepos();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [githubUsername, isBeta, walletAddress]);
 
     async function handleLogout() {
         try {
@@ -377,6 +422,10 @@ export default function Profile() {
             setIsBetaSignupSubmitting(false);
         }
     }
+
+    const selectedGithubRepoUrl = githubRepos.some((repo) => repo.url === launchForm.repoUrl)
+        ? launchForm.repoUrl
+        : '';
 
     return (
         <div className="grid-bg scanlines" style={{ minHeight: '100vh', position: 'relative', display: 'flex', flexDirection: 'column' }}>
@@ -764,6 +813,67 @@ export default function Profile() {
                                         </option>
                                     ))}
                                 </select>
+                            </div>
+
+                            {/* GitHub Repository */}
+                            {githubUsername && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    <label className="font-mono" style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                        GitHub Repository
+                                    </label>
+                                    <select
+                                        value={selectedGithubRepoUrl}
+                                        onChange={e => setLaunchForm(prev => ({ ...prev, repoUrl: e.target.value }))}
+                                        className="font-mono"
+                                        disabled={githubReposStatus === 'loading' || githubRepos.length === 0}
+                                        style={{
+                                            padding: '10px 14px', fontSize: '0.9rem',
+                                            background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0',
+                                            outline: 'none', transition: 'border-color 0.2s',
+                                        }}
+                                        onFocus={e => { e.currentTarget.style.borderColor = '#06d6a0'; }}
+                                        onBlur={e => { e.currentTarget.style.borderColor = '#1e1e30'; }}
+                                    >
+                                        <option value="">
+                                            {githubReposStatus === 'loading' ? 'Loading GitHub Repos' : 'Select public repo'}
+                                        </option>
+                                        {githubRepos.map((repo) => (
+                                            <option key={repo.id || repo.url} value={repo.url}>
+                                                {repo.full_name || repo.url}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+
+                            {githubReposStatus === 'error' && (
+                                <div className="font-mono" style={{
+                                    padding: '10px 14px', fontSize: '0.78rem',
+                                    background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+                                    color: '#ef4444', wordBreak: 'break-word',
+                                }}>
+                                    {githubReposError}
+                                </div>
+                            )}
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                <label className="font-mono" style={{ fontSize: '0.72rem', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                                    GitHub Repo URL
+                                </label>
+                                <input
+                                    type="url"
+                                    value={launchForm.repoUrl}
+                                    onChange={e => setLaunchForm(prev => ({ ...prev, repoUrl: e.target.value }))}
+                                    placeholder="https://github.com/owner/repo"
+                                    className="font-mono"
+                                    style={{
+                                        padding: '10px 14px', fontSize: '0.9rem',
+                                        background: '#13131f', border: '1px solid #1e1e30', color: '#e2e8f0',
+                                        outline: 'none', transition: 'border-color 0.2s',
+                                    }}
+                                    onFocus={e => { e.currentTarget.style.borderColor = '#06d6a0'; }}
+                                    onBlur={e => { e.currentTarget.style.borderColor = '#1e1e30'; }}
+                                />
                             </div>
 
                             {/* URI */}
